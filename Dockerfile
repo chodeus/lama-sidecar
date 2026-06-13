@@ -6,6 +6,11 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
+# Unbuffered stdout so `docker logs` is immediate; no .pyc writes (code dir is
+# root-owned and the runtime user is non-root).
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 # curl for the model download in entrypoint.sh; clean apt lists to stay slim.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \

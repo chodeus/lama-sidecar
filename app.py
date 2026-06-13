@@ -30,7 +30,7 @@ MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 MAX_B64_CHARS = int(os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024))  # ~48MB binary
 MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per image
 
-app = FastAPI(title="lama-sidecar", version="1.2.0")
+app = FastAPI(title="lama-sidecar", version="1.2.1")
 _model: LamaModel | None = None
 
 
