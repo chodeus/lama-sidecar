@@ -35,7 +35,7 @@ jobs:
       # every run. The host owns the file, so caching has no permission issues.
       - name: Restore model cache
         id: model-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: model-cache/big-lama.pt
           key: big-lama-e3aa4aaa15225a33ec84f9f4bc47e500
