@@ -32,26 +32,21 @@ chain, no Stable Diffusion / React / plugin baggage.
 Downloaded on first run to the mounted `/models` volume and checksum-verified by
 `entrypoint.sh`. Override via `LAMA_MODEL_URL` / `LAMA_MODEL_MD5` if needed.
 
-## Build & run
+## Run
+
+CI publishes `ghcr.io/chodeus/lama-sidecar` on every version tag, so hosts just
+pull it — no local build required.
 
 ```bash
-# build (do this on the Unraid host so it's a linux/amd64 image)
-docker build -t lama-sidecar:1.0.0 .
-
-# run — model persists in appdata, served on :8080
 docker run -d --name lama-sidecar --restart unless-stopped \
   -p 8080:8080 \
-  -v /mnt/user/appdata/lama-sidecar:/models \
+  -v /path/to/appdata/lama-sidecar:/models \
   ghcr.io/chodeus/lama-sidecar:latest
 ```
 
-CI builds and publishes `ghcr.io/chodeus/lama-sidecar` on every version tag, so
-the Unraid host just pulls it — no building on the NAS.
-
-First start downloads the ~200 MB model (one-time, into the volume). Expect
-**~1.5 GB image** and **~1–2 GB RAM** while inpainting. CPU only — the UHD 770
-iGPU is not used (LaMa inference here is CPU/CUDA; an i5-14600K handles a poster
-erase in a few seconds).
+First start downloads the ~200 MB model once into the volume. Expect a
+**~1.5 GB image** and **~1–2 GB RAM** during inpainting. **CPU only** — no GPU is
+required or used; a modern desktop CPU erases a poster in a few seconds.
 
 ### Unraid "Add Container" fields
 
@@ -60,21 +55,16 @@ erase in a few seconds).
 | Repository | `ghcr.io/chodeus/lama-sidecar:latest` |
 | Network Type | `bridge` |
 | Port | Container `8080` → Host `8080` (TCP) |
-| Path | Container `/models` → Host `/mnt/user/appdata/lama-sidecar` |
-
-## Build / release
-
-Local build: `docker build -t lama-sidecar:dev .`
-Release: push a `vX.Y.Z` tag — CI runs the full build + real-inpaint smoke test,
-then publishes the image.
+| Path | Container `/models` → Host appdata, e.g. `/mnt/user/appdata/lama-sidecar` |
 
 ## Wire CHUB to it
 
-In `/mnt/user/appdata/chub/config/config.yml` under `cl2k_maker`:
+In CHUB's `config.yml`, under `cl2k_maker`, point it at this container. Use the
+host's address (LAN IP, or the container name if both share a Docker network):
 
 ```yaml
   ai_provider: lama_sidecar
-  ai_endpoint: 'http://192.168.2.206:8080'   # CHUB appends /api/v1/inpaint
+  ai_endpoint: 'http://HOST:8080'   # CHUB appends /api/v1/inpaint
   ai_api_key: ''
   ai_model: ''
   ai_timeout: 120
@@ -85,11 +75,18 @@ Restart CHUB to reload config.
 ## Test
 
 ```bash
-python test_smoke.py http://192.168.2.206:8080
+python test_smoke.py http://HOST:8080
 ```
 
 Generates a poster-ish image with a black "text" bar, erases it, and checks the
 region was reconstructed (writes `smoke_output.png`).
+
+## Build / release
+
+Local build: `docker build -t lama-sidecar:dev .`
+
+Release: push a `vX.Y.Z` tag — CI runs the full build + real-inpaint smoke test,
+then publishes the image to GHCR.
 
 ## API
 
