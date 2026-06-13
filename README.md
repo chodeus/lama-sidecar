@@ -60,11 +60,10 @@ a template source) and it appears under *Add Container*. Or set the fields by ha
 | Network Type | `bridge` |
 | Port | Container `8080` → Host `8080` (TCP) |
 | Path | Container `/models` → Host appdata, e.g. `/mnt/user/appdata/lama-sidecar` |
-| Extra Parameters | `--user 99:100` |
 
-`--user 99:100` runs the container as `nobody:users`, so the cached model is
-owned correctly in appdata. Nothing here needs root (port 8080 is unprivileged;
-writes only touch the `/models` volume).
+The image **runs as non-root (99:100 / `nobody:users`) by default**, so the
+cached model is owned correctly in appdata with no Extra Parameters needed.
+Nothing here needs root (port 8080 is unprivileged; writes only touch `/models`).
 
 ## Wire CHUB to it
 

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.source="https://github.com/chodeus/lama-sidecar"
 LABEL org.opencontainers.image.description="Full-resolution LaMa inpainting sidecar for CHUB retexting"
@@ -20,6 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py lama.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
+
+# Run as non-root by default. 99:100 = nobody:users on Unraid; the IDs are
+# numeric so the image stays portable. Pre-create /models owned by that user so
+# the model download works even without a bind mount.
+RUN mkdir -p /models && chown 99:100 /models
+USER 99:100
 
 ENV LAMA_MODEL_PATH=/models/big-lama.pt
 EXPOSE 8080

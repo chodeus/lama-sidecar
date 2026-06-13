@@ -9,12 +9,12 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/chodeus/lama-sidecar/issues</Support>
   <Project>https://github.com/chodeus/lama-sidecar</Project>
-  <Overview>Full-resolution LaMa inpainting sidecar for CHUB's CL2K "retexting" feature. Exposes POST /api/v1/inpaint (the contract CHUB's lama_sidecar provider calls) and GET /health. CPU-only. On first run it downloads the big-lama model (~200MB, MD5-verified) into /models and caches it there. Runs as 99:100 (nobody:users) via Extra Parameters.</Overview>
+  <Overview>Full-resolution LaMa inpainting sidecar for CHUB's CL2K "retexting" feature. Exposes POST /api/v1/inpaint (the contract CHUB's lama_sidecar provider calls) and GET /health. CPU-only. On first run it downloads the big-lama model (~200MB, MD5-verified) into /models and caches it there. The image runs as non-root (99:100 / nobody:users) by default.</Overview>
   <Category>Other: Productivity:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/chodeus/lama-sidecar/main/unraid/lama-sidecar.xml</TemplateURL>
   <Icon/>
-  <ExtraParams>--user 99:100</ExtraParams>
+  <ExtraParams></ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
