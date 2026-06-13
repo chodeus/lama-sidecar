@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pt
+model-cache/
+models/
+smoke_output.png
+.venv/
+.idea/
+.DS_Store

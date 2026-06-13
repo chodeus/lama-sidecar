@@ -1,0 +1,8 @@
+.git
+__pycache__
+*.pyc
+*.pt
+models/
+README.md
+*.md
+test_*.py
