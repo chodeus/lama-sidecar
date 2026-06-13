@@ -48,7 +48,11 @@ First start downloads the ~200 MB model once into the volume. Expect a
 **~1.5 GB image** and **~1–2 GB RAM** during inpainting. **CPU only** — no GPU is
 required or used; a modern desktop CPU erases a poster in a few seconds.
 
-### Unraid "Add Container" fields
+### Unraid
+
+A ready-made template lives at [`unraid/lama-sidecar.xml`](unraid/lama-sidecar.xml).
+Drop it in `/boot/config/plugins/dockerMan/templates-user/` (or add this repo as
+a template source) and it appears under *Add Container*. Or set the fields by hand:
 
 | Field | Value |
 |---|---|
@@ -56,6 +60,11 @@ required or used; a modern desktop CPU erases a poster in a few seconds.
 | Network Type | `bridge` |
 | Port | Container `8080` → Host `8080` (TCP) |
 | Path | Container `/models` → Host appdata, e.g. `/mnt/user/appdata/lama-sidecar` |
+| Extra Parameters | `--user 99:100` |
+
+`--user 99:100` runs the container as `nobody:users`, so the cached model is
+owned correctly in appdata. Nothing here needs root (port 8080 is unprivileged;
+writes only touch the `/models` volume).
 
 ## Wire CHUB to it
 

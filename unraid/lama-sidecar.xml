@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>lama-sidecar</Name>
+  <Repository>ghcr.io/chodeus/lama-sidecar:latest</Repository>
+  <Registry>https://github.com/chodeus/lama-sidecar/pkgs/container/lama-sidecar</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/chodeus/lama-sidecar/issues</Support>
+  <Project>https://github.com/chodeus/lama-sidecar</Project>
+  <Overview>Full-resolution LaMa inpainting sidecar for CHUB's CL2K "retexting" feature. Exposes POST /api/v1/inpaint (the contract CHUB's lama_sidecar provider calls) and GET /health. CPU-only. On first run it downloads the big-lama model (~200MB, MD5-verified) into /models and caches it there. Runs as 99:100 (nobody:users) via Extra Parameters.</Overview>
+  <Category>Other: Productivity:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/chodeus/lama-sidecar/main/unraid/lama-sidecar.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams>--user 99:100</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="API Port" Target="8080" Default="8080" Mode="tcp" Description="HTTP API: POST /api/v1/inpaint, GET /health" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Model cache" Target="/models" Default="/mnt/user/appdata/lama-sidecar" Mode="rw" Description="Persists the downloaded big-lama model so it isn't re-fetched on restart" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/lama-sidecar</Config>
+</Container>
