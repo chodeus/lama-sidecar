@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.source="https://github.com/chodeus/lama-sidecar"
 LABEL org.opencontainers.image.description="Full-resolution LaMa inpainting sidecar for CHUB retexting"
