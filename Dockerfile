@@ -28,9 +28,11 @@ RUN mkdir -p /models && chown 99:100 /models
 USER 99:100
 
 ENV LAMA_MODEL_PATH=/models/big-lama.pt
-EXPOSE 8080
+# 8418 by default — 8080 collides with qBittorrent on most Unraid setups.
+ENV PORT=8418
+EXPOSE 8418
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT:-8418}/health" || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]

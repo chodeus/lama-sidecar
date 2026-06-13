@@ -53,13 +53,13 @@ jobs:
       # Mount the verified model read-only; the container skips its own download.
       - name: Start container
         run: |
-          docker run -d --name lama -p 8080:8080 \
+          docker run -d --name lama -p 8418:8418 \
             -v "$PWD/model-cache:/models:ro" lama-sidecar:ci
 
       - name: Wait for health
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/health | grep -q '"model_loaded":true'; then
+            if curl -fsS http://localhost:8418/health | grep -q '"model_loaded":true'; then
               echo "healthy after ${i} tries"; exit 0
             fi
             sleep 5
@@ -69,7 +69,7 @@ jobs:
       - name: Smoke test (real inpaint)
         run: |
           pip install requests pillow
-          python test_smoke.py http://localhost:8080
+          python test_smoke.py http://localhost:8418
 
       - name: Container logs on failure
         if: failure()
