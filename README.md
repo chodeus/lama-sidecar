@@ -35,16 +35,26 @@ docker run -d --name lama-sidecar --restart unless-stopped \
 
 Image ~1.5 GB, ~1–2 GB RAM in use. Listens on **8418**. Runs as **99:100**.
 
-### Unraid
+### Install on Unraid
 
-Template: [`unraid/lama-sidecar.xml`](unraid/lama-sidecar.xml) — drop in
-`/boot/config/plugins/dockerMan/templates-user/`, or set:
+1. Copy [`unraid/lama-sidecar.xml`](unraid/lama-sidecar.xml) to
+   `/boot/config/plugins/dockerMan/templates-user/` on the server.
+2. **Docker** tab → **Add Container** → pick **lama-sidecar** from the template
+   dropdown.
+3. Check the fields, then **Apply**:
 
-| Field | Value |
-|---|---|
-| Repository | `ghcr.io/chodeus/lama-sidecar:latest` |
-| Port | `8418` → `8418` (TCP) |
-| Path | `/models` → e.g. `/mnt/user/appdata/lama-sidecar` |
+   | Field | Value |
+   |---|---|
+   | Repository | `ghcr.io/chodeus/lama-sidecar:latest` |
+   | Port | `8418` → `8418` (TCP) |
+   | `/models` | `/mnt/user/appdata/lama-sidecar` |
+
+4. First start downloads the model (~200 MB); wait until the container shows
+   **healthy** before use.
+
+No template file? **Add Container** manually with the same Repository, Port, and
+Path. To reach it from CHUB without exposing a host port, put both containers on
+the same Docker network and use `http://lama-sidecar:8418`.
 
 ## CHUB config
 
