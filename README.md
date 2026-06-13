@@ -1,109 +1,78 @@
 # lama-sidecar
 
-A tiny, self-owned **full-resolution LaMa inpainting** service for CHUB's CL2K
-"retexting" feature. It erases old title text from poster artwork and
-reconstructs the background, so CHUB can draw a fresh label.
+Full-resolution LaMa inpainting service for CHUB's CL2K "retexting". Erases text
+from poster artwork and reconstructs the background. CPU-only, runs as non-root.
 
-It is **not** IOPaint. It loads the same frozen `big-lama` model IOPaint used,
-but via ~120 lines you own — no archived wrapper, no torch-stale dependency
-chain, no Stable Diffusion / React / plugin baggage.
-
-## Why this design
-
-- **Full resolution.** LaMa is resolution-robust (Fourier-convolution
-  architecture, good to ~2k). Posters run at native size — no downscaling to a
-  fixed 512 box, which the only available ONNX builds force. The Fourier layers
-  are precisely why LaMa can't export to a dynamic-shape ONNX, so the
-  TorchScript model is the correct full-res tool.
-- **Nothing abandoned.** Frozen model file + `torch` (maintained by the PyTorch
-  Foundation) + FastAPI/Pillow/numpy (all active). Only the ~120 lines of glue
-  are "yours to maintain," and that's just occasional dep bumps.
-- **Separate container.** CHUB is untouched — they talk over HTTP. Rebuild or
-  delete this without any risk to CHUB.
-
-## Model provenance
-
-| | |
-|---|---|
-| URL | `https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt` |
-| MD5 | `e3aa4aaa15225a33ec84f9f4bc47e500` |
-| License | Apache-2.0 (advimman/LaMa weights) |
-
-Downloaded on first run to the mounted `/models` volume and checksum-verified by
-`entrypoint.sh`. Override via `LAMA_MODEL_URL` / `LAMA_MODEL_MD5` if needed.
-
-## Run
-
-CI publishes `ghcr.io/chodeus/lama-sidecar` on every version tag, so hosts just
-pull it — no local build required.
-
-```bash
-docker run -d --name lama-sidecar --restart unless-stopped \
-  -p 8080:8080 \
-  -v /path/to/appdata/lama-sidecar:/models \
-  ghcr.io/chodeus/lama-sidecar:latest
-```
-
-First start downloads the ~200 MB model once into the volume. Expect a
-**~1.5 GB image** and **~1–2 GB RAM** during inpainting. **CPU only** — no GPU is
-required or used; a modern desktop CPU erases a poster in a few seconds.
-
-### Unraid
-
-A ready-made template lives at [`unraid/lama-sidecar.xml`](unraid/lama-sidecar.xml).
-Drop it in `/boot/config/plugins/dockerMan/templates-user/` (or add this repo as
-a template source) and it appears under *Add Container*. Or set the fields by hand:
-
-| Field | Value |
-|---|---|
-| Repository | `ghcr.io/chodeus/lama-sidecar:latest` |
-| Network Type | `bridge` |
-| Port | Container `8080` → Host `8080` (TCP) |
-| Path | Container `/models` → Host appdata, e.g. `/mnt/user/appdata/lama-sidecar` |
-
-The image **runs as non-root (99:100 / `nobody:users`) by default**, so the
-cached model is owned correctly in appdata with no Extra Parameters needed.
-Nothing here needs root (port 8080 is unprivileged; writes only touch `/models`).
-
-## Wire CHUB to it
-
-In CHUB's `config.yml`, under `cl2k_maker`, point it at this container. Use the
-host's address (LAN IP, or the container name if both share a Docker network):
-
-```yaml
-  ai_provider: lama_sidecar
-  ai_endpoint: 'http://HOST:8080'   # CHUB appends /api/v1/inpaint
-  ai_api_key: ''
-  ai_model: ''
-  ai_timeout: 120
-```
-
-Restart CHUB to reload config.
-
-## Test
-
-```bash
-python test_smoke.py http://HOST:8080
-```
-
-Generates a poster-ish image with a black "text" bar, erases it, and checks the
-region was reconstructed (writes `smoke_output.png`).
-
-## Build / release
-
-Local build: `docker build -t lama-sidecar:dev .`
-
-Release: push a `vX.Y.Z` tag — CI runs the full build + real-inpaint smoke test,
-then publishes the image to GHCR.
-
-## API
+Speaks the contract CHUB's `lama_sidecar` provider calls:
 
 ```
 GET  /health                -> {"status":"ok","model_loaded":true}
 POST /api/v1/inpaint
      body: {"image":"<base64 PNG>","mask":"<base64 PNG, white=erase>"}
-     ->   200, raw PNG bytes of the reconstructed image
+     ->   200, PNG bytes of the reconstructed image
 ```
 
-This is exactly the contract CHUB's `lama_sidecar` provider calls
-(`backend/util/cl2k/text_removal.py`).
+## Model
+
+| | |
+|---|---|
+| File | `big-lama.pt` (TorchScript) |
+| URL | `https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt` |
+| MD5 | `e3aa4aaa15225a33ec84f9f4bc47e500` |
+| License | Apache-2.0 |
+
+Downloaded to `/models` on first run and MD5-verified. Override with
+`LAMA_MODEL_URL` / `LAMA_MODEL_MD5`.
+
+## Run
+
+```bash
+docker run -d --name lama-sidecar --restart unless-stopped \
+  -p 8418:8418 \
+  -v /path/to/appdata/lama-sidecar:/models \
+  ghcr.io/chodeus/lama-sidecar:latest
+```
+
+Image ~1.5 GB, ~1–2 GB RAM in use. Listens on **8418**. Runs as **99:100**.
+
+### Unraid
+
+Template: [`unraid/lama-sidecar.xml`](unraid/lama-sidecar.xml) — drop in
+`/boot/config/plugins/dockerMan/templates-user/`, or set:
+
+| Field | Value |
+|---|---|
+| Repository | `ghcr.io/chodeus/lama-sidecar:latest` |
+| Port | `8418` → `8418` (TCP) |
+| Path | `/models` → e.g. `/mnt/user/appdata/lama-sidecar` |
+
+## CHUB config
+
+In CHUB's `config.yml` under `cl2k_maker`:
+
+```yaml
+  ai_provider: lama_sidecar
+  ai_endpoint: 'http://HOST:8418'   # or container name on a shared network
+  ai_api_key: ''
+  ai_model: ''
+  ai_timeout: 120
+```
+
+## Config
+
+| Env | Default | |
+|---|---|---|
+| `PORT` | `8418` | API port |
+| `LAMA_MODEL_PATH` | `/models/big-lama.pt` | model location |
+| `LAMA_MAX_PIXELS` | `40000000` | reject images larger than this |
+| `LAMA_MAX_B64_CHARS` | `67108864` | reject payloads larger than this |
+
+## Test
+
+```bash
+python test_smoke.py http://HOST:8418
+```
+
+## Release
+
+Push a `vX.Y.Z` tag — CI builds, runs a real-inpaint test, and publishes to GHCR.

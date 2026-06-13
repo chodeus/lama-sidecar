@@ -21,6 +21,6 @@
   <DonateText/>
   <DonateLink/>
   <Requires/>
-  <Config Name="API Port" Target="8080" Default="8080" Mode="tcp" Description="HTTP API: POST /api/v1/inpaint, GET /health" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="API Port" Target="8418" Default="8418" Mode="tcp" Description="HTTP API: POST /api/v1/inpaint, GET /health" Type="Port" Display="always" Required="true" Mask="false">8418</Config>
   <Config Name="Model cache" Target="/models" Default="/mnt/user/appdata/lama-sidecar" Mode="rw" Description="Persists the downloaded big-lama model so it isn't re-fetched on restart" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/lama-sidecar</Config>
 </Container>
