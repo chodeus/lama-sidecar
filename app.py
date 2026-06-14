@@ -4,8 +4,11 @@ Speaks the exact contract CHUB's ``lama_sidecar`` provider expects
 (see CHUB ``backend/util/cl2k/text_removal.py``):
 
     POST /api/v1/inpaint
-    body: {"image": "<base64 PNG>", "mask": "<base64 PNG, white = erase>"}
-    -> 200 with the cleaned image as raw PNG bytes
+    body: {"image": "<base64 image, JPEG/PNG/etc>", "mask": "<base64 mask, white = erase>"}
+    -> 200 with the cleaned image as raw PNG bytes (lossless intermediate)
+
+The input format is auto-detected by Pillow, so JPEG posters work as-is. The
+response is PNG so CHUB's composite/re-encode isn't stacked on lossy bytes.
 
 CHUB composites the masked region back onto the original itself, so we simply
 return LaMa's full reconstruction.
