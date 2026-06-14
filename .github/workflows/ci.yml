@@ -14,10 +14,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.14'
       - run: pip install ruff
       - run: ruff check .
       - run: python -m py_compile app.py lama.py test_smoke.py
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         run: docker build -t lama-sidecar:ci .
@@ -35,7 +35,7 @@ jobs:
       # every run. The host owns the file, so caching has no permission issues.
       - name: Restore model cache
         id: model-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: model-cache/big-lama.pt
           key: big-lama-e3aa4aaa15225a33ec84f9f4bc47e500
@@ -53,13 +53,13 @@ jobs:
       # Mount the verified model read-only; the container skips its own download.
       - name: Start container
         run: |
-          docker run -d --name lama -p 8080:8080 \
+          docker run -d --name lama -p 8418:8418 \
             -v "$PWD/model-cache:/models:ro" lama-sidecar:ci
 
       - name: Wait for health
         run: |
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/health | grep -q '"model_loaded":true'; then
+            if curl -fsS http://localhost:8418/health | grep -q '"model_loaded":true'; then
               echo "healthy after ${i} tries"; exit 0
             fi
             sleep 5
@@ -69,7 +69,7 @@ jobs:
       - name: Smoke test (real inpaint)
         run: |
           pip install requests pillow
-          python test_smoke.py http://localhost:8080
+          python test_smoke.py http://localhost:8418
 
       - name: Container logs on failure
         if: failure()
@@ -83,14 +83,14 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/chodeus/lama-sidecar
           tags: |
@@ -98,7 +98,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true

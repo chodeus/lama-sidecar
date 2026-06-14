@@ -1,10 +1,15 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.source="https://github.com/chodeus/lama-sidecar"
 LABEL org.opencontainers.image.description="Full-resolution LaMa inpainting sidecar for CHUB retexting"
 LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
+
+# Unbuffered stdout so `docker logs` is immediate; no .pyc writes (code dir is
+# root-owned and the runtime user is non-root).
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # curl for the model download in entrypoint.sh; clean apt lists to stay slim.
 RUN apt-get update \
@@ -21,10 +26,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py lama.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-ENV LAMA_MODEL_PATH=/models/big-lama.pt
-EXPOSE 8080
+# Run as non-root by default. 99:100 = nobody:users on Unraid; the IDs are
+# numeric so the image stays portable. Pre-create /models owned by that user so
+# the model download works even without a bind mount.
+RUN mkdir -p /models && chown 99:100 /models
+USER 99:100
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health || exit 1
+ENV LAMA_MODEL_PATH=/models/big-lama.pt
+# 8418 by default — 8080 collides with qBittorrent on most Unraid setups.
+ENV PORT=8418
+EXPOSE 8418
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT:-8418}/health" || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]

@@ -25,7 +25,12 @@ from lama import LamaModel
 
 MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 
-app = FastAPI(title="lama-sidecar", version="1.0.0")
+# Guard rails so an oversized payload can't exhaust memory on an unauthenticated
+# endpoint. Posters are a few MP; these limits are generous but bounded.
+MAX_B64_CHARS = int(os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024))  # ~48MB binary
+MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per image
+
+app = FastAPI(title="lama-sidecar", version="1.2.1")
 _model: LamaModel | None = None
 
 
@@ -49,11 +54,16 @@ def health() -> dict:
 def inpaint(req: InpaintRequest) -> Response:
     if _model is None:  # pragma: no cover - startup guarantees this
         raise HTTPException(status_code=503, detail="model not loaded")
+    if len(req.image) > MAX_B64_CHARS or len(req.mask) > MAX_B64_CHARS:
+        raise HTTPException(status_code=413, detail="image or mask too large")
     try:
         image = Image.open(io.BytesIO(base64.b64decode(req.image)))
         mask = Image.open(io.BytesIO(base64.b64decode(req.mask)))
     except Exception as exc:  # malformed payload
         raise HTTPException(status_code=400, detail=f"bad image/mask: {exc}")
+
+    if image.width * image.height > MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="image resolution too large")
 
     result = _model.inpaint(image, mask)
     buf = io.BytesIO()
