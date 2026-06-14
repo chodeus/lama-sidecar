@@ -8,8 +8,8 @@ Speaks the contract CHUB's `lama_sidecar` provider calls:
 ```
 GET  /health                -> {"status":"ok","model_loaded":true}
 POST /api/v1/inpaint
-     body: {"image":"<base64 PNG>","mask":"<base64 PNG, white=erase>"}
-     ->   200, PNG bytes of the reconstructed image
+     body: {"image":"<base64 image, JPEG/PNG/etc>","mask":"<base64 mask, white=erase>"}
+     ->   200, PNG bytes (lossless; CHUB composites & re-encodes)
 ```
 
 ## Model
