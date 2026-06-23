@@ -19,7 +19,7 @@ POST /api/v1/inpaint
 | File | `big-lama.pt` (TorchScript) |
 | URL | `https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt` |
 | MD5 | `e3aa4aaa15225a33ec84f9f4bc47e500` |
-| License | Apache-2.0 |
+| License | Apache-2.0 (model weights only — see [License](#license)) |
 
 Downloaded to `/models` on first run and MD5-verified. Override with
 `LAMA_MODEL_URL` / `LAMA_MODEL_MD5`.
@@ -86,3 +86,12 @@ python test_smoke.py http://HOST:8418
 ## Release
 
 Push a `vX.Y.Z` tag — CI builds, runs a real-inpaint test, and publishes to GHCR.
+
+## License
+
+Two separate licenses apply:
+
+- **This repository's code** (the sidecar wrapper, Dockerfile, scripts) — MIT,
+  see [LICENSE](LICENSE).
+- **The `big-lama.pt` model weights** — Apache-2.0, owned by their original
+  authors. They are downloaded at runtime, not bundled in this image or repo.
