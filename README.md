@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="lama-sidecar" width="360">
+</p>
+
 # lama-sidecar
 
 Full-resolution LaMa inpainting service for CHUB's CL2K "retexting". Erases text
@@ -74,8 +78,20 @@ In CHUB's `config.yml` under `cl2k_maker`:
 |---|---|---|
 | `PORT` | `8418` | API port |
 | `LAMA_MODEL_PATH` | `/models/big-lama.pt` | model location |
+| `LAMA_TARGET_RES` | `1024` | per-region downscale long-edge; `0` = single full-res pass |
+| `LAMA_REGION_PAD` | `0.5` | context padding around each masked region (fraction of its size) |
 | `LAMA_MAX_PIXELS` | `40000000` | reject images larger than this |
 | `LAMA_MAX_B64_CHARS` | `67108864` | reject payloads larger than this |
+
+### Background reconstruction
+
+On a large contiguous hole (e.g. a title wordmark over clouds) LaMa's receptive
+field can't reach the interior, so it returns a smooth blur. The sidecar splits
+the mask into connected regions and inpaints each in its own crop at an adaptive
+scale: small regions run at native resolution (sharp), large ones are downscaled
+so the hole fits the receptive field, inpainted, then upscaled — recovering
+texture. Only masked pixels change. Set `LAMA_TARGET_RES=0` to revert to a single
+full-resolution pass.
 
 ## Test
 

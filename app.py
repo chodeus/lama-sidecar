@@ -10,8 +10,9 @@ Speaks the exact contract CHUB's ``lama_sidecar`` provider expects
 The input format is auto-detected by Pillow, so JPEG posters work as-is. The
 response is PNG so CHUB's composite/re-encode isn't stacked on lossy bytes.
 
-CHUB composites the masked region back onto the original itself, so we simply
-return LaMa's full reconstruction.
+Large masked areas are reconstructed per-region (see lama.py) so logos don't come
+back as a blur; only masked pixels are altered. CHUB composites the masked region
+onto its own original again, so the full frame we return stays compatible.
 """
 
 from __future__ import annotations
@@ -33,7 +34,12 @@ MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 MAX_B64_CHARS = int(os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024))  # ~48MB binary
 MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per image
 
-app = FastAPI(title="lama-sidecar", version="1.2.1")
+# Per-region adaptive reconstruction (see lama.py). TARGET_RES is the long-edge a
+# crop is downscaled to before inpainting; 0 disables splitting (one full pass).
+TARGET_RES = int(os.environ.get("LAMA_TARGET_RES", 1024))
+REGION_PAD = float(os.environ.get("LAMA_REGION_PAD", 0.5))
+
+app = FastAPI(title="lama-sidecar", version="1.3.0")
 _model: LamaModel | None = None
 
 
@@ -45,7 +51,7 @@ class InpaintRequest(BaseModel):
 @app.on_event("startup")
 def _load_model() -> None:
     global _model
-    _model = LamaModel(MODEL_PATH)
+    _model = LamaModel(MODEL_PATH, target_res=TARGET_RES, region_pad=REGION_PAD)
 
 
 @app.get("/health")

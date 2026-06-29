@@ -1,9 +1,22 @@
-"""Full-resolution LaMa inpainting.
+"""LaMa inpainting with adaptive per-region reconstruction.
 
 Loads the canonical ``big-lama`` TorchScript model (the same frozen artifact
-IOPaint used) and runs it at the image's native resolution — LaMa is
-resolution-robust (Fourier-convolution architecture) up to ~2k, so posters are
-processed at full size rather than downscaled to a fixed box.
+IOPaint used). LaMa is resolution-robust (Fourier-convolution architecture), but
+on a *large* contiguous hole the interior sits beyond the model's receptive
+field, so it averages to a smooth blur instead of reconstructing texture. The
+classic example is a poster's title wordmark over clouds: at native resolution
+the band comes back as a hazy smear.
+
+To fix that without softening small text, the mask is split into connected
+regions and each is inpainted in its own crop at an *adaptive* scale:
+
+* small region (a date, a small caption) -> native resolution, razor-sharp;
+* large region (a wide logo band) -> downscaled so the hole fits the receptive
+  field, inpainted, then upscaled — recovering background texture.
+
+Only the masked pixels of each region are composited back onto a pristine copy,
+so untouched artwork is never resampled. Set ``LAMA_TARGET_RES=0`` to disable the
+region logic and run a single full-resolution pass (the pre-1.3 behaviour).
 
 Preprocessing mirrors IOPaint's reference pipeline: normalise to [0,1], binarise
 the mask (white = region to erase), pad height/width up to a multiple of 8 for
@@ -17,6 +30,10 @@ import torch
 from PIL import Image
 
 PAD_MODULO = 8
+
+# Above this many separate blobs the O(n^2) grouping isn't worth it (and the mask
+# is probably noise) — fall back to one global-resize pass over the whole extent.
+MAX_COMPONENTS = 2000
 
 
 def _ceil_modulo(x: int, mod: int) -> int:
@@ -38,12 +55,130 @@ def _pad_to_modulo(img: np.ndarray, mod: int) -> np.ndarray:
     return np.pad(img, ((0, 0), (0, out_h - h), (0, out_w - w)), mode="symmetric")
 
 
+def _connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
+    """8-connected components of a 2D bool mask -> list of (y0, x0, y1, x1) bboxes
+    (y1/x1 exclusive). Run-based two-pass labelling: each row's True segments are
+    union-found against the previous row's. No scipy/cv2 needed; cost scales with
+    the number of runs, which is tiny for text-shaped masks."""
+    h, w = mask.shape
+    parent: dict[int, int] = {}
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    next_id = 0
+    prev_runs: list[tuple[int, int, int]] = []  # (col_start, col_end_inclusive, label)
+    all_runs: list[tuple[int, int, int, int]] = []  # (row, col_start, col_end_incl, label)
+
+    for y in range(h):
+        row = mask[y]
+        idx = np.flatnonzero(row)
+        if idx.size == 0:
+            prev_runs = []
+            continue
+        # Split the True columns into maximal consecutive runs.
+        breaks = np.flatnonzero(np.diff(idx) > 1)
+        starts = np.concatenate(([0], breaks + 1))
+        ends = np.concatenate((breaks, [idx.size - 1]))
+        cur_runs: list[tuple[int, int, int]] = []
+        for s, e in zip(starts, ends):
+            cs, ce = int(idx[s]), int(idx[e])
+            lbl = next_id
+            next_id += 1
+            parent[lbl] = lbl
+            for ps, pe, plbl in prev_runs:  # 8-connectivity: overlap within 1 col
+                if pe >= cs - 1 and ps <= ce + 1:
+                    union(lbl, plbl)
+            cur_runs.append((cs, ce, lbl))
+            all_runs.append((y, cs, ce, lbl))
+        prev_runs = cur_runs
+
+    boxes: dict[int, list[int]] = {}
+    for y, cs, ce, lbl in all_runs:
+        r = find(lbl)
+        b = boxes.get(r)
+        if b is None:
+            boxes[r] = [y, cs, y + 1, ce + 1]
+        else:
+            b[0] = min(b[0], y)
+            b[1] = min(b[1], cs)
+            b[2] = max(b[2], y + 1)
+            b[3] = max(b[3], ce + 1)
+    return [tuple(b) for b in boxes.values()]  # type: ignore[misc]
+
+
+def _group_regions(boxes, pad_frac, min_pad, w, h):
+    """Pad each component box, union any that overlap, and return clamped crop
+    boxes (y0, x0, y1, x1). Padding gives the inpainter valid context around a
+    hole and merges a word's glyphs into one crop; far-apart text stays separate."""
+    n = len(boxes)
+    par = list(range(n))
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            par[rb] = ra
+
+    exp = []
+    for y0, x0, y1, x1 in boxes:
+        p = max(min_pad, int(pad_frac * max(y1 - y0, x1 - x0)))
+        exp.append((y0 - p, x0 - p, y1 + p, x1 + p))
+
+    for i in range(n):
+        ay0, ax0, ay1, ax1 = exp[i]
+        for j in range(i + 1, n):
+            by0, bx0, by1, bx1 = exp[j]
+            if ay0 < by1 and by0 < ay1 and ax0 < bx1 and bx0 < ax1:
+                union(i, j)
+
+    regions: dict[int, list[int]] = {}
+    for i in range(n):
+        r = find(i)
+        ey0, ex0, ey1, ex1 = exp[i]
+        g = regions.get(r)
+        if g is None:
+            regions[r] = [ey0, ex0, ey1, ex1]
+        else:
+            g[0] = min(g[0], ey0)
+            g[1] = min(g[1], ex0)
+            g[2] = max(g[2], ey1)
+            g[3] = max(g[3], ex1)
+
+    out = []
+    for g in regions.values():
+        out.append((max(0, g[0]), max(0, g[1]), min(h, g[2]), min(w, g[3])))
+    return out
+
+
 class LamaModel:
-    def __init__(self, model_path: str, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        model_path: str,
+        device: str = "cpu",
+        target_res: int = 1024,
+        region_pad: float = 0.5,
+    ) -> None:
         self.device = torch.device(device)
         # TorchScript model is self-contained — no model class needed.
         self.model = torch.jit.load(model_path, map_location=self.device)
         self.model.eval()
+        # <=0 disables region splitting and runs one full-resolution pass.
+        self.target_res = target_res
+        self.region_pad = region_pad
 
     @torch.no_grad()
     def inpaint(self, image: Image.Image, mask: Image.Image) -> Image.Image:
@@ -53,6 +188,49 @@ class LamaModel:
             # NEAREST keeps the mask strictly binary after resizing.
             mask = mask.resize(image.size, Image.NEAREST)
 
+        if self.target_res and self.target_res > 0:
+            return self._inpaint_regions(image, mask)
+        return self._inpaint_full(image, mask)
+
+    def _inpaint_regions(self, image: Image.Image, mask: Image.Image) -> Image.Image:
+        w, h = image.size
+        mask_bool = np.array(mask) > 127
+        if not mask_bool.any():
+            return image.copy()
+
+        boxes = _connected_components(mask_bool)
+        if len(boxes) > MAX_COMPONENTS:
+            arr = np.array(boxes)
+            regions = [(
+                max(0, int(arr[:, 0].min()) - 8), max(0, int(arr[:, 1].min()) - 8),
+                min(h, int(arr[:, 2].max()) + 8), min(w, int(arr[:, 3].max()) + 8),
+            )]
+        else:
+            regions = _group_regions(boxes, self.region_pad, 8, w, h)
+
+        out = image.copy()
+        for y0, x0, y1, x1 in regions:
+            crop_img = image.crop((x0, y0, x1, y1))
+            crop_mask = mask.crop((x0, y0, x1, y1))
+            cw, ch = crop_img.size
+            scale = min(1.0, self.target_res / max(cw, ch))
+            res = self._inpaint_crop(crop_img, crop_mask, scale)
+            out.paste(res, (x0, y0), crop_mask)
+        return out
+
+    def _inpaint_crop(
+        self, crop_img: Image.Image, crop_mask: Image.Image, scale: float
+    ) -> Image.Image:
+        if scale >= 0.999:
+            return self._inpaint_full(crop_img, crop_mask)
+        cw, ch = crop_img.size
+        sw, sh = max(PAD_MODULO, round(cw * scale)), max(PAD_MODULO, round(ch * scale))
+        small_img = crop_img.resize((sw, sh), Image.LANCZOS)
+        small_mask = crop_mask.resize((sw, sh), Image.NEAREST)
+        res = self._inpaint_full(small_img, small_mask)
+        return res.resize((cw, ch), Image.LANCZOS)
+
+    def _inpaint_full(self, image: Image.Image, mask: Image.Image) -> Image.Image:
         orig_w, orig_h = image.size
 
         img = _norm_img(np.array(image))          # 3 x H x W, [0,1]
