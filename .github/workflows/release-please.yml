@@ -1,0 +1,54 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release:
+    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@2a3661ac2b92d2da482640228e5202486550656f # main
+
+  # Tags created by release-please use GITHUB_TOKEN, which does not trigger
+  # other workflows — so we publish the image here, gated on the release
+  # output, instead of relying on a push:tags trigger.
+  docker:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout at new tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/chodeus/lama-sidecar
+          tags: |
+            type=raw,value=${{ needs.release.outputs.version }}
+            type=raw,value=${{ needs.release.outputs.major }}.${{ needs.release.outputs.minor }}
+            type=sha
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
