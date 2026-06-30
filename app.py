@@ -46,7 +46,7 @@ REGION_PAD = float(os.environ.get("LAMA_REGION_PAD", 0.5))
 MASK_DILATE = int(os.environ.get("LAMA_MASK_DILATE", 5))
 MASK_FEATHER = int(os.environ.get("LAMA_MASK_FEATHER", 2))
 
-app = FastAPI(title="lama-sidecar", version="1.3.0")  # x-release-please-version
+app = FastAPI(title="lama-sidecar", version="1.4.0")  # x-release-please-version
 _model: LamaModel | None = None
 
 
