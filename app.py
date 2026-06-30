@@ -39,7 +39,14 @@ MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per ima
 TARGET_RES = int(os.environ.get("LAMA_TARGET_RES", 1024))
 REGION_PAD = float(os.environ.get("LAMA_REGION_PAD", 0.5))
 
-app = FastAPI(title="lama-sidecar", version="1.3.0")
+# Grow the incoming mask by N px before inpainting so a logo's anti-aliased fringe
+# and soft glow get erased too (otherwise they survive as a ghost outline); feather
+# softens the composite seam. Set both to 0 for the original no-dilation behaviour.
+# See lama.py.
+MASK_DILATE = int(os.environ.get("LAMA_MASK_DILATE", 5))
+MASK_FEATHER = int(os.environ.get("LAMA_MASK_FEATHER", 2))
+
+app = FastAPI(title="lama-sidecar", version="1.3.0")  # x-release-please-version
 _model: LamaModel | None = None
 
 
@@ -51,7 +58,13 @@ class InpaintRequest(BaseModel):
 @app.on_event("startup")
 def _load_model() -> None:
     global _model
-    _model = LamaModel(MODEL_PATH, target_res=TARGET_RES, region_pad=REGION_PAD)
+    _model = LamaModel(
+        MODEL_PATH,
+        target_res=TARGET_RES,
+        region_pad=REGION_PAD,
+        mask_dilate=MASK_DILATE,
+        mask_feather=MASK_FEATHER,
+    )
 
 
 @app.get("/health")

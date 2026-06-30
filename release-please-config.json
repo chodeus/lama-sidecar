@@ -6,6 +6,7 @@
     ".": {
       "release-type": "simple",
       "package-name": "lama-sidecar",
+      "extra-files": ["app.py"],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },

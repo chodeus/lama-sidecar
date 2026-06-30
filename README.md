@@ -80,6 +80,8 @@ In CHUB's `config.yml` under `cl2k_maker`:
 | `LAMA_MODEL_PATH` | `/models/big-lama.pt` | model location |
 | `LAMA_TARGET_RES` | `1024` | per-region downscale long-edge; `0` = single full-res pass |
 | `LAMA_REGION_PAD` | `0.5` | context padding around each masked region (fraction of its size) |
+| `LAMA_MASK_DILATE` | `5` | grow the mask by N px to swallow a logo's anti-aliased fringe/glow; `0` = off. Raise to `7–8` for beveled/metallic/glowing logos, lower to `2–3` if your masks are already generous |
+| `LAMA_MASK_FEATHER` | `2` | Gaussian-soften the composite seam (px); `0` = hard edge |
 | `LAMA_MAX_PIXELS` | `40000000` | reject images larger than this |
 | `LAMA_MAX_B64_CHARS` | `67108864` | reject payloads larger than this |
 
@@ -92,6 +94,13 @@ scale: small regions run at native resolution (sharp), large ones are downscaled
 so the hole fits the receptive field, inpainted, then upscaled — recovering
 texture. Only masked pixels change. Set `LAMA_TARGET_RES=0` to revert to a single
 full-resolution pass.
+
+A logo's edges are anti-aliased in the artwork, so even a snug mask leaves a thin
+fringe (plus any soft glow) outside the hole — which comes back as a faint ghost
+outline. `LAMA_MASK_DILATE` grows the mask a few pixels to cover that fringe, and
+`LAMA_MASK_FEATHER` softens the composite seam. This is the highest-leverage knob
+for clean logo removal; the default `5`/`2` clears typical poster wordmarks. Set
+`LAMA_MASK_DILATE=0` to disable.
 
 ## Test
 

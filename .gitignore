@@ -7,3 +7,7 @@ smoke_output.png
 .venv/
 .idea/
 .DS_Store
+
+# local-only experiment harness (not part of the image)
+masktest/
+prototype/

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageFilter
 
 PAD_MODULO = 8
 
@@ -171,6 +171,8 @@ class LamaModel:
         device: str = "cpu",
         target_res: int = 1024,
         region_pad: float = 0.5,
+        mask_dilate: int = 0,
+        mask_feather: int = 0,
     ) -> None:
         self.device = torch.device(device)
         # TorchScript model is self-contained — no model class needed.
@@ -179,6 +181,20 @@ class LamaModel:
         # <=0 disables region splitting and runs one full-resolution pass.
         self.target_res = target_res
         self.region_pad = region_pad
+        # Grow the hole by N px before inpainting so a logo's anti-aliased fringe
+        # and soft glow (which a tight mask leaves outside) get erased too — without
+        # this they survive as a "ghost" outline. Feather only softens the composite
+        # seam; the model still fills the hard, dilated hole underneath.
+        self.mask_dilate = mask_dilate
+        self.mask_feather = mask_feather
+
+    def _dilate(self, mask: Image.Image) -> Image.Image:
+        if self.mask_dilate <= 0:
+            return mask
+        m = mask.point(lambda v: 255 if v > 127 else 0)
+        for _ in range(self.mask_dilate):  # iterated 3x3 max = N-px 8-conn dilation
+            m = m.filter(ImageFilter.MaxFilter(3))
+        return m
 
     @torch.no_grad()
     def inpaint(self, image: Image.Image, mask: Image.Image) -> Image.Image:
@@ -187,6 +203,8 @@ class LamaModel:
         if mask.size != image.size:
             # NEAREST keeps the mask strictly binary after resizing.
             mask = mask.resize(image.size, Image.NEAREST)
+
+        mask = self._dilate(mask)
 
         if self.target_res and self.target_res > 0:
             return self._inpaint_regions(image, mask)
@@ -215,7 +233,12 @@ class LamaModel:
             cw, ch = crop_img.size
             scale = min(1.0, self.target_res / max(cw, ch))
             res = self._inpaint_crop(crop_img, crop_mask, scale)
-            out.paste(res, (x0, y0), crop_mask)
+            # Feather only the composite alpha for a soft seam; the model already
+            # received the hard mask, so the hole is fully filled underneath.
+            paste_mask = crop_mask
+            if self.mask_feather > 0:
+                paste_mask = crop_mask.filter(ImageFilter.GaussianBlur(self.mask_feather))
+            out.paste(res, (x0, y0), paste_mask)
         return out
 
     def _inpaint_crop(
