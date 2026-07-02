@@ -16,16 +16,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Patch the base image's setuptools — 70.2.0 ships CVE-2025-47273 (path traversal,
-# fixed in 78.1.1); Trivy fails the build on it otherwise.
-RUN pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'
-
 # CPU-only torch — keeps the image ~1.5GB instead of ~5GB with CUDA.
 RUN pip install --no-cache-dir torch==2.12.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Patch setuptools LAST so no earlier pip step reintroduces the base image's
+# 70.2.0 (CVE-2025-47273 path traversal, fixed in 78.1.1) that Trivy fails on.
+RUN pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
+    && python -c "import setuptools, sys; assert tuple(map(int, setuptools.__version__.split('.')[:2])) >= (78, 1), setuptools.__version__"
 
 COPY app.py lama.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
