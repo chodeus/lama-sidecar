@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
 
 LABEL org.opencontainers.image.source="https://github.com/chodeus/lama-sidecar"
 LABEL org.opencontainers.image.description="Full-resolution LaMa inpainting sidecar for CHUB retexting"

@@ -84,8 +84,8 @@ def inpaint(req: InpaintRequest) -> Response:
     except Exception as exc:  # malformed payload
         raise HTTPException(status_code=400, detail=f"bad image/mask: {exc}")
 
-    if image.width * image.height > MAX_PIXELS:
-        raise HTTPException(status_code=413, detail="image resolution too large")
+    if image.width * image.height > MAX_PIXELS or mask.width * mask.height > MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="image or mask resolution too large")
 
     result = _model.inpaint(image, mask)
     buf = io.BytesIO()
