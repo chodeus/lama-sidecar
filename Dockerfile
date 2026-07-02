@@ -16,6 +16,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Patch the base image's setuptools — 70.2.0 ships CVE-2025-47273 (path traversal,
+# fixed in 78.1.1); Trivy fails the build on it otherwise.
+RUN pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'
+
 # CPU-only torch — keeps the image ~1.5GB instead of ~5GB with CUDA.
 RUN pip install --no-cache-dir torch==2.12.0 \
     --index-url https://download.pytorch.org/whl/cpu
