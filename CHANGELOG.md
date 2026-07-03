@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/chodeus/lama-sidecar/compare/v1.4.0...v1.4.1) (2026-07-03)
+
+
+### Chores
+
+* release 1.4.1 ([e6e1eff](https://github.com/chodeus/lama-sidecar/commit/e6e1eff00a306bd292ad8f115580fd76b418b3d1))
+
 ## [1.4.0](https://github.com/chodeus/lama-sidecar/compare/v1.3.0...v1.4.0) (2026-06-30)
 
 
