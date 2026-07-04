@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/chodeus/lama-sidecar/compare/v1.4.1...v1.5.0) (2026-07-04)
+
+
+### Features
+
+* hole-based removal quality, text-detection + logo-upscale endpoints, hardening ([aab5f5e](https://github.com/chodeus/lama-sidecar/commit/aab5f5e6b796464a42b6ead541aa81503fe7ebba))
+
 ## [1.4.1](https://github.com/chodeus/lama-sidecar/compare/v1.4.0...v1.4.1) (2026-07-03)
 
 

@@ -105,7 +105,7 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="lama-sidecar", version="1.4.1", lifespan=_lifespan)  # x-release-please-version
+app = FastAPI(title="lama-sidecar", version="1.5.0", lifespan=_lifespan)  # x-release-please-version
 
 
 class BodyLimitMiddleware:
