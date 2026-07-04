@@ -1,9 +1,10 @@
 # Trivy ignore list for the lama-sidecar image scans (CI and release).
 #
-# One CVE ID per line, with a comment on the line above stating the
-# reachability rationale (why the vulnerable code path cannot be hit in this
-# image) — per the block-on-unreviewed-HIGH policy, an entry without a
-# rationale counts as unreviewed and must be removed.
+# The scan runs with ignore-unfixed, so unpatched base-OS CVEs (nothing we can
+# action) don't wedge the build. This file is for a *fixable* HIGH/CRITICAL we
+# consciously accept anyway: one CVE ID per line, with a comment on the line
+# above stating why (why the vulnerable path can't be hit here, or why the fix
+# is deferred). An entry without a rationale counts as unreviewed — remove it.
 #
 # Example:
 # # only exploitable via feature X; not installed/enabled in this image

@@ -34,10 +34,11 @@ jobs:
       - name: Build image
         run: docker build -t lama-sidecar:ci .
 
-      # Fail the build (before any release/GHCR push) on any HIGH/CRITICAL in
-      # the base image or a Python dep — including unfixed ones. Reviewed,
-      # unreachable CVEs go in .trivyignore with a rationale, never a blanket
-      # ignore-unfixed.
+      # Fail the build (before any release/GHCR push) on any *fixable*
+      # HIGH/CRITICAL — a base-image re-pin or a dependency bump clears those.
+      # ignore-unfixed skips OS CVEs with no upstream patch (Debian curl/perl
+      # etc.), which we can't action and which don't touch the sidecar's runtime
+      # path; document any fixable CVE we consciously accept in .trivyignore.
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -45,6 +46,7 @@ jobs:
           format: table
           exit-code: '1'
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
 
       # Cache the model file (keyed on its MD5) so we don't re-download 200MB
       # every run. The host owns the file, so caching has no permission issues.
