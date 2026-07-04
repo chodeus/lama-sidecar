@@ -46,7 +46,76 @@ jobs:
             type=sha
             type=raw,value=latest
 
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      # Build locally first so the image is scanned and smoke-tested BEFORE
+      # anything reaches GHCR — a release must never ship an unvetted image.
+      # The final push step reuses the build cache, so it costs almost nothing.
+      - name: Build image (local, no push)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: lama-sidecar:release-test
+
+      # Same gate as ci.yml: fail on any HIGH/CRITICAL; reviewed, unreachable
+      # CVEs live in .trivyignore with a rationale.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: lama-sidecar:release-test
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+      # Cache the model file (keyed on its MD5) so we don't re-download 200MB
+      # every release; shares the cache ci.yml populates on main.
+      - name: Restore model cache
+        id: model-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: model-cache/big-lama.pt
+          key: big-lama-e3aa4aaa15225a33ec84f9f4bc47e500
+
+      - name: Download model
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p model-cache
+          curl -fSL https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt \
+            -o model-cache/big-lama.pt
+
+      - name: Verify model checksum
+        run: echo "e3aa4aaa15225a33ec84f9f4bc47e500  model-cache/big-lama.pt" | md5sum -c -
+
+      # Writable mount: the smoke test exercises /detect and /upscale, whose
+      # models download lazily into /models (as uid 99, hence the chmod). The
+      # verified big-lama.pt is already in place, so that download is skipped.
+      - name: Start container
+        run: |
+          chmod 777 model-cache
+          docker run -d --name lama -p 8418:8418 \
+            -v "$PWD/model-cache:/models" lama-sidecar:release-test
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8418/health | grep -q '"model_loaded":true'; then
+              echo "healthy after ${i} tries"; exit 0
+            fi
+            sleep 5
+          done
+          echo "container never became healthy"; docker logs lama; exit 1
+
+      - name: Smoke test (real inpaint)
+        run: |
+          pip install requests pillow numpy
+          python test_smoke.py http://localhost:8418
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs lama || true
+
+      - name: Push image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           push: true

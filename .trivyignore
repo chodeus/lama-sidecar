@@ -1,0 +1,10 @@
+# Trivy ignore list for the lama-sidecar image scans (CI and release).
+#
+# One CVE ID per line, with a comment on the line above stating the
+# reachability rationale (why the vulnerable code path cannot be hit in this
+# image) — per the block-on-unreviewed-HIGH policy, an entry without a
+# rationale counts as unreviewed and must be removed.
+#
+# Example:
+# # only exploitable via feature X; not installed/enabled in this image
+# CVE-2099-12345

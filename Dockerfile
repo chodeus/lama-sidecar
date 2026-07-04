@@ -17,7 +17,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # CPU-only torch — keeps the image ~1.5GB instead of ~5GB with CUDA.
-RUN pip install --no-cache-dir torch==2.12.0 \
+# 2.12.1 fixes CVE-2025-3000.
+RUN pip install --no-cache-dir torch==2.12.1 \
     --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
@@ -25,10 +26,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Patch setuptools LAST so no earlier pip step reintroduces the base image's
 # 70.2.0 (CVE-2025-47273 path traversal, fixed in 78.1.1) that Trivy fails on.
-RUN pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
+# Pinned exactly for reproducible builds; bump deliberately.
+RUN pip install --no-cache-dir --upgrade setuptools==82.0.1 \
     && python -c "import setuptools, sys; assert tuple(map(int, setuptools.__version__.split('.')[:2])) >= (78, 1), setuptools.__version__"
 
-COPY app.py lama.py entrypoint.sh ./
+COPY app.py lama.py regions.py detect.py upscale.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
 # Run as non-root by default. 99:100 = nobody:users on Unraid; the IDs are
@@ -42,7 +44,9 @@ ENV LAMA_MODEL_PATH=/models/big-lama.pt
 ENV PORT=8418
 EXPOSE 8418
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+# 300s start period: first run downloads the ~200MB model, which can easily
+# exceed 90s on slow links — don't mark the container unhealthy while it does.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
     CMD curl -fsS "http://localhost:${PORT:-8418}/health" || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
