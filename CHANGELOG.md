@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/chodeus/lama-sidecar/compare/v1.5.0...v1.5.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* keep passing healthcheck probes out of the access log ([a61b61f](https://github.com/chodeus/lama-sidecar/commit/a61b61f496cc9d4fe0fa14406a75b12bd707e497))
+
 ## [1.5.0](https://github.com/chodeus/lama-sidecar/compare/v1.4.1...v1.5.0) (2026-07-04)
 
 
