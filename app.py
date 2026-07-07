@@ -44,6 +44,23 @@ from lama import LamaModel
 
 log = logging.getLogger("uvicorn.error")
 
+
+class _HealthAccessFilter(logging.Filter):
+    """Keep the Docker HEALTHCHECK out of the access log: it curls /health from
+    inside the container every 30s, which otherwise prints a 200 line each probe
+    (~2880/day of pure noise). Only PASSING probes are dropped — a failing one
+    (non-200) still logs, as does every real API request."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn.access args: (client_addr, method, path, http_version, status).
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        return not (args[1] == "GET" and args[2] == "/health" and args[4] == 200)
+
+
+logging.getLogger("uvicorn.access").addFilter(_HealthAccessFilter())
+
 MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 
 # Guard rails so an oversized payload can't exhaust memory on an unauthenticated
@@ -102,6 +119,7 @@ async def _lifespan(app: FastAPI):
         hole_thick=HOLE_THICK,
         seam_match=SEAM_MATCH,
     )
+    log.info("lama-sidecar ready — model loaded from %s", MODEL_PATH)
     yield
 
 
