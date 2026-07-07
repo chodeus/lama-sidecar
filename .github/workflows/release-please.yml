@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@2a3661ac2b92d2da482640228e5202486550656f # main
+    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@af17d8ce986da0b92cbdfc84d2170e199e34a3fb # main
 
   # Tags created by release-please use GITHUB_TOKEN, which does not trigger
   # other workflows — so we publish the image here, gated on the release
@@ -30,7 +30,7 @@ jobs:
         with:
           ref: ${{ needs.release.outputs.tag_name }}
 
-      - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
