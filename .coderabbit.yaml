@@ -1,0 +1,46 @@
+# .coderabbit.yaml — lama-sidecar
+# CPU-only LaMa inpainting sidecar for CHUB: FastAPI API (app.py) over a
+# TorchScript model pipeline (lama.py) with pure-numpy mask geometry
+# (regions.py) and lazily-fetched detect/upscale models.
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "!CHANGELOG.md"                  # release-please owns it
+    - "!.release-please-manifest.json"
+
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |-
+        lama-sidecar review rules — flag violations of these invariants:
+        - ONLY-MASKED-PIXELS-CHANGE CONTRACT: every composite onto the output
+          image must clamp its paste alpha under the (dilated) hole mask —
+          the ImageChops.darker(blurred, hard_mask) pattern. Any code path
+          that could alter a pixel outside the mask is a bug, no matter how
+          subtle the change (feather, seam match, refine passes included).
+        - HEURISTICS FAIL NO-OP: best-effort helpers (mask snap, boundary
+          refine, seam match, text detect) must return their input unchanged
+          on EVERY bail-out path — empty ring, busy content, over-budget
+          crop, failed download. "Do its best on ambiguous input" is a bug;
+          the fallback is always the un-helped behaviour.
+        - regions.py stays torch-free pure numpy (the fast CI job unit-tests
+          it without the model); torch/model code belongs in lama.py only.
+        - BOUNDED INPUTS: anything request-derived that sizes an array, a
+          crop, or a loop (mask runs, component counts, refine crop pixels,
+          base64/pixel payloads) needs an explicit cap checked BEFORE the
+          expensive work, so one request can't pin the single-slot worker.
+        - Secrets & artifacts: API-key comparison stays hmac.compare_digest;
+          model downloads stay checksum-verified before replacing a cached
+          file (verify-then-mv, never verify-after-install).
+    - path: "Dockerfile"
+      instructions: |-
+        Keep: non-root runtime (99:100 for Unraid), digest-pinned base image,
+        CPU-only torch from the pytorch index (not PyPI's CUDA build), and
+        setuptools patched LAST so no later pip step reintroduces the base
+        image's vulnerable version.
