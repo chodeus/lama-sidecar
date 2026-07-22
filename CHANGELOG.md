@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/chodeus/lama-sidecar/compare/v1.5.1...v1.6.0) (2026-07-22)
+
+
+### Features
+
+* mask snap, native boundary refine, and run-count bail fix ([169f0c6](https://github.com/chodeus/lama-sidecar/commit/169f0c65c51c465119a7190f856949b89ba0a865))
+
 ## [1.5.1](https://github.com/chodeus/lama-sidecar/compare/v1.5.0...v1.5.1) (2026-07-07)
 
 
