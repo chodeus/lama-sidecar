@@ -30,9 +30,15 @@ def dilate(mask: np.ndarray, px: int) -> np.ndarray:
     for _ in range(px):
         p = np.pad(m, 1)
         m = (
-            p[:-2, :-2] | p[:-2, 1:-1] | p[:-2, 2:]
-            | p[1:-1, :-2] | p[1:-1, 1:-1] | p[1:-1, 2:]
-            | p[2:, :-2] | p[2:, 1:-1] | p[2:, 2:]
+            p[:-2, :-2]
+            | p[:-2, 1:-1]
+            | p[:-2, 2:]
+            | p[1:-1, :-2]
+            | p[1:-1, 1:-1]
+            | p[1:-1, 2:]
+            | p[2:, :-2]
+            | p[2:, 1:-1]
+            | p[2:, 2:]
         )
     return m
 
@@ -62,11 +68,24 @@ def hole_scale(hole_w: int, hole_h: int, long_res: int, thick_res: int) -> float
     return min(1.0, max(long_res / longe, thick_res / thick))
 
 
-def connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
-    """8-connected components of a 2D bool mask -> list of (y0, x0, y1, x1) bboxes
-    (y1/x1 exclusive). Run-based two-pass labelling: each row's True segments are
-    union-found against the previous row's. No scipy/cv2 needed; cost scales with
-    the number of runs — callers must pre-bound that with count_runs()."""
+def erode(mask: np.ndarray, px: int) -> np.ndarray:
+    """8-connected erosion by ``px`` — the dual of :func:`dilate`. Pixels beyond
+    the image edge count as True, so a mask touching the border is not eroded
+    from that side; ``mask & ~erode(mask, px)`` is then an inner band that hugs
+    real boundaries only."""
+    if px <= 0:
+        return mask
+    return ~dilate(~mask, px)
+
+
+def _run_scan(mask: np.ndarray):
+    """Union-found horizontal runs — the shared engine behind
+    connected_components / labeled_components. Returns (all_runs, find) where
+    all_runs is [(row, col_start, col_end_inclusive, run_label)] and find maps
+    a run label to its component root. Run-based two-pass labelling: each row's
+    True segments are union-found against the previous row's. No scipy/cv2
+    needed; cost scales with the number of runs — callers must pre-bound that
+    with count_runs()."""
     h, w = mask.shape
     parent: dict[int, int] = {}
 
@@ -83,7 +102,9 @@ def connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
 
     next_id = 0
     prev_runs: list[tuple[int, int, int]] = []  # (col_start, col_end_inclusive, label)
-    all_runs: list[tuple[int, int, int, int]] = []  # (row, col_start, col_end_incl, label)
+    all_runs: list[
+        tuple[int, int, int, int]
+    ] = []  # (row, col_start, col_end_incl, label)
 
     for y in range(h):
         row = mask[y]
@@ -108,6 +129,13 @@ def connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
             all_runs.append((y, cs, ce, lbl))
         prev_runs = cur_runs
 
+    return all_runs, find
+
+
+def connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
+    """8-connected components of a 2D bool mask -> list of (y0, x0, y1, x1)
+    bboxes (y1/x1 exclusive). See :func:`_run_scan` for the algorithm/cost."""
+    all_runs, find = _run_scan(mask)
     boxes: dict[int, list[int]] = {}
     for y, cs, ce, lbl in all_runs:
         r = find(lbl)
@@ -120,6 +148,110 @@ def connected_components(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
             b[2] = max(b[2], y + 1)
             b[3] = max(b[3], ce + 1)
     return [tuple(b) for b in boxes.values()]  # type: ignore[misc]
+
+
+def labeled_components(mask: np.ndarray) -> tuple[np.ndarray, int]:
+    """Component label image for a 2D bool mask: (labels, n) with labels int32,
+    0 = background and components numbered 1..n in first-encounter order. Same
+    run engine as connected_components, plus one slice write per run."""
+    all_runs, find = _run_scan(mask)
+    labels = np.zeros(mask.shape, dtype=np.int32)
+    ids: dict[int, int] = {}
+    for y, cs, ce, lbl in all_runs:
+        r = find(lbl)
+        i = ids.get(r)
+        if i is None:
+            i = ids[r] = len(ids) + 1
+        labels[y, cs : ce + 1] = i
+    return labels, len(ids)
+
+
+# snap_mask: how far past the hole edge the background is sampled for the
+# content threshold. Small on purpose — the median only needs enough clean
+# pixels to be robust against the stubs themselves.
+SNAP_RING_PX = 16
+
+
+def snap_mask(
+    rgb: np.ndarray,
+    hole: np.ndarray,
+    *,
+    delta: int = 35,
+    min_overlap: float = 0.45,
+    max_area_frac: float = 2.0,
+    margin: int = 192,
+    reach: int = 120,
+    max_runs: int = 150_000,
+) -> tuple[np.ndarray, int]:
+    """Grow ``hole`` to swallow whole high-contrast strokes it already mostly
+    covers.
+
+    A brush or detect mask that clips the last few pixels of a glyph leaves a
+    stub at the hole boundary; LaMa anchors on the stub and smears it across
+    the fill (or keeps it outright). A structure the mask merely grazes is
+    intent — the user painted around it — and must stay.
+
+    "Content" is any pixel whose max per-channel distance from the ring-median
+    background exceeds a threshold (channel-wise, so chroma-only strokes
+    count). A content component crossing the hole edge is swallowed only when
+    the hole already covers >= ``min_overlap`` of it AND it is not scene-scale
+    (> ``max_area_frac`` x hole area — a vignette, a backdrop object). Two
+    thresholds run and their picks union: ``delta`` catches low-contrast
+    strokes, and ``2 * delta`` re-tries with the soft connective tissue cut
+    away — at the soft level a glyph often fuses THROUGH a shadow gradient
+    into scene-scale structure and fails the overlap test, while its
+    hard-contrast core alone passes.
+
+    Everything swallowed must lie within ``reach`` px of the hole: a stub by
+    definition hugs the boundary, while the far tail of a qualifying component
+    (a scene shadow the glyph fuses into even at the strong threshold) is real
+    content the brush never covered — without the cap it would be repainted
+    wholesale. Purely additive: returns (grown_hole, added_px), and every
+    heuristic bail-out (busy art where everything is content, empty ring,
+    nothing to add) leaves the hole unchanged.
+    """
+    bbox = mask_bbox(hole)
+    if bbox is None:
+        return hole, 0
+    h, w = hole.shape
+    by0, bx0, by1, bx1 = bbox
+    y0, x0 = max(0, by0 - margin), max(0, bx0 - margin)
+    y1, x1 = min(h, by1 + margin), min(w, bx1 + margin)
+    sub_hole = hole[y0:y1, x0:x1]
+    sub_rgb = rgb[y0:y1, x0:x1].astype(np.int16)
+    ring = dilate(sub_hole, SNAP_RING_PX) & ~sub_hole
+    if int(ring.sum()) < 64:
+        return hole, 0
+    med = np.median(sub_rgb[ring], axis=0)
+    dist = np.abs(sub_rgb - med).max(axis=2)
+    hole_area = max(int(sub_hole.sum()), 1)
+    add = np.zeros_like(sub_hole)
+    for thr in (delta, delta * 2):
+        content = dist > thr
+        if count_runs(content) > max_runs:
+            continue
+        labels, n = labeled_components(content)
+        if n == 0:
+            continue
+        area = np.bincount(labels.ravel(), minlength=n + 1)
+        inside = np.bincount(labels[sub_hole].ravel(), minlength=n + 1)
+        ratio = inside / np.maximum(area, 1)
+        keep = (
+            (inside > 0)
+            & (inside < area)  # crosses the boundary; fully-inside adds nothing
+            & (ratio >= min_overlap)
+            & (area <= max_area_frac * hole_area)
+        )
+        keep[0] = False
+        if keep.any():
+            add |= keep[labels]
+    if add.any():
+        add &= dilate(sub_hole, reach)
+    if not add.any():
+        return hole, 0
+    grown = hole.copy()
+    grown[y0:y1, x0:x1] |= add
+    return grown, int(grown.sum()) - int(hole.sum())
 
 
 def group_regions(boxes, pad_frac, min_pad, w, h):

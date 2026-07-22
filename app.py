@@ -7,10 +7,11 @@ Speaks the exact contract CHUB's ``lama_sidecar`` provider expects
     body: {"image": "<base64 image, JPEG/PNG/etc>", "mask": "<base64 mask, white = erase>"}
     -> 200 with the cleaned image as raw PNG bytes (lossless intermediate)
 
-Optional per-request fields (dilate/feather/target_res) override the env
-defaults for one call; "debug": true switches the response to JSON with the
-region boxes, scales and timing alongside the image. Every inpaint response
-carries X-Lama-Regions / X-Lama-Scales / X-Lama-Inference-Ms headers.
+Optional per-request fields (dilate/feather/target_res/snap/refine) override
+the env defaults for one call; "debug": true switches the response to JSON with
+the region boxes, scales and timing alongside the image. Every inpaint response
+carries X-Lama-Regions / X-Lama-Scales / X-Lama-Inference-Ms / X-Lama-Snap-Px /
+X-Lama-Refine headers.
 
 Two companion endpoints share the same base64 conventions and the optional
 LAMA_API_KEY guard: /api/v1/detect (text detection -> polygons + white=text
@@ -67,7 +68,9 @@ MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 # endpoint. Posters are a few MP; these limits are generous but bounded. The
 # body cap is enforced by middleware BEFORE the JSON is buffered/parsed — the
 # per-field checks alone would only fire after the whole body sat in memory.
-MAX_B64_CHARS = int(os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024))  # ~48MB binary
+MAX_B64_CHARS = int(
+    os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024)
+)  # ~48MB binary
 MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per image
 MAX_BODY_BYTES = int(
     os.environ.get("LAMA_MAX_BODY_BYTES", 2 * MAX_B64_CHARS + (16 << 20))
@@ -90,6 +93,14 @@ SEAM_MATCH = os.environ.get("LAMA_SEAM_MATCH", "1") not in ("0", "false", "no")
 # softens the composite seam (inward only). Both overridable per request.
 MASK_DILATE = int(os.environ.get("LAMA_MASK_DILATE", 5))
 MASK_FEATHER = int(os.environ.get("LAMA_MASK_FEATHER", 2))
+
+# Snap: swallow whole high-contrast strokes the mask already mostly covers, so
+# a brush that clips a glyph edge doesn't leave a smear-anchoring stub. Refine:
+# re-inpaint a thin boundary band of downscaled fills at native resolution
+# (costs roughly one extra inference on those posters). Both default-on and
+# overridable per request; see lama.py.
+MASK_SNAP = os.environ.get("LAMA_MASK_SNAP", "1") not in ("0", "false", "no")
+REFINE = os.environ.get("LAMA_REFINE", "1") not in ("0", "false", "no")
 
 # One inference at a time by default: a single pass already uses every core,
 # so parallel requests only oversubscribe CPU and multiply peak memory.
@@ -118,12 +129,16 @@ async def _lifespan(app: FastAPI):
         hole_res=HOLE_RES,
         hole_thick=HOLE_THICK,
         seam_match=SEAM_MATCH,
+        mask_snap=MASK_SNAP,
+        refine=REFINE,
     )
     log.info("lama-sidecar ready — model loaded from %s", MODEL_PATH)
     yield
 
 
-app = FastAPI(title="lama-sidecar", version="1.5.1", lifespan=_lifespan)  # x-release-please-version
+app = FastAPI(
+    title="lama-sidecar", version="1.5.1", lifespan=_lifespan
+)  # x-release-please-version
 
 
 class BodyLimitMiddleware:
@@ -178,14 +193,16 @@ class BodyLimitMiddleware:
     @staticmethod
     async def _reject(send):
         body = b'{"detail":"request body too large"}'
-        await send({
-            "type": "http.response.start",
-            "status": 413,
-            "headers": [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(body)).encode()),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
 
@@ -206,10 +223,12 @@ def _require_api_key(request: Request) -> None:
 
 class InpaintRequest(BaseModel):
     image: str  # base64-encoded image
-    mask: str   # base64-encoded mask, white (255) = erase
+    mask: str  # base64-encoded mask, white (255) = erase
     dilate: int | None = Field(None, ge=0, le=64)
     feather: int | None = Field(None, ge=0, le=32)
     target_res: int | None = Field(None, ge=0, le=8192)
+    snap: bool | None = None  # swallow mostly-covered strokes (default: env)
+    refine: bool | None = None  # native-res boundary refine pass (default: env)
     debug: bool = False
 
 
@@ -256,16 +275,21 @@ def inpaint(req: InpaintRequest) -> Response:
 
     with _infer_slots:
         result, meta = _model.inpaint(
-            image, mask,
+            image,
+            mask,
             dilate_px=req.dilate,
             feather_px=req.feather,
             target_res=req.target_res,
+            snap=req.snap,
+            refine=req.refine,
         )
 
     headers = {
         "X-Lama-Regions": str(len(meta["regions"])),
         "X-Lama-Scales": ",".join(str(s) for s in meta["scales"]),
         "X-Lama-Inference-Ms": str(meta["inference_ms"]),
+        "X-Lama-Snap-Px": str(meta["snap_px"]),
+        "X-Lama-Refine": (",".join(str(r["scale"]) for r in meta["refine"]) or "off"),
     }
     buf = io.BytesIO()
     result.save(buf, "PNG")
@@ -286,6 +310,7 @@ def detect(req: DetectRequest) -> JSONResponse:
             with _lazy_lock:
                 if _detector is None:
                     from detect import TextDetector
+
                     _detector = TextDetector()
         with _infer_slots:
             regions, mask = _detector.detect(image, req.min_score)
@@ -310,6 +335,7 @@ def upscale(req: UpscaleRequest) -> Response:
             with _lazy_lock:
                 if _upscaler is None:
                     from upscale import Upscaler
+
                     _upscaler = Upscaler(os.path.dirname(MODEL_PATH))
         with _infer_slots:
             result = _upscaler.upscale(image, req.scale)

@@ -20,6 +20,21 @@ Only the masked pixels of each region are composited back onto a pristine copy
 bit-identical). Set ``LAMA_TARGET_RES=0`` for a single whole-frame region
 instead of component splitting; the same composite rules apply.
 
+Two further stages bracket the region passes (both default-on, per-request
+overridable):
+
+- **Snap** (before dilation): grow the mask over whole high-contrast strokes it
+  already mostly covers (regions.snap_mask), so a brush that clips the last few
+  px of a glyph doesn't leave a stub at the hole edge — LaMa anchors on such
+  stubs and smears them across the fill, or keeps them outright.
+- **Boundary refine** (after the region passes): any region filled below
+  REFINE_BELOW scale gets a REFINE_RING-thick inner band of its hole
+  re-inpainted at native resolution. The downscale-inpaint-upscale path leaves
+  real edges that continue into the dilated hole (a chin, a box edge) repainted
+  at 1/scale blur; the band is thin, so context reaches all of it, the stage-1
+  fill supplies interior context, and the paste keeps the same
+  never-exceed-the-hole alpha guarantee.
+
 Preprocessing mirrors IOPaint's reference pipeline: normalise to [0,1], binarise
 the mask once (white = region to erase), pad height/width up to a multiple of 8
 for the convolutions, run, scale back to [0,255], and crop the padding away.
@@ -39,18 +54,24 @@ from regions import (
     connected_components,
     count_runs,
     dilate,
+    erode,
     group_regions,
     hole_scale,
     mask_bbox,
+    snap_mask,
 )
 
 PAD_MODULO = 8
 
-# Above this many separate blobs (or horizontal runs, checked first — runs are
-# countable in one vectorised pass, before the labeller spends any time) the
-# grouping isn't worth it and the mask is probably noise: fall back to one
-# global-extent region.
-MAX_COMPONENTS = 2000
+# Bail out of component splitting when the mask is speckle noise. count_runs is
+# a cheap upper bound on the component count, but it counts per-ROW runs — a
+# single solid 500px-tall rectangle contributes ~500 of them — so the threshold
+# must be calibrated to runs, not components: real brush/detect masks land in
+# the hundreds-to-thousands (a full-poster detect mask ~5k), labelling cost is
+# still trivial well past that, and only genuine speckle trips this. (At 2000
+# this fired on ordinary detect masks and collapsed them into one global-extent
+# region inpainted at a catastrophic downscale.)
+MAX_RUNS = 20_000
 
 # Whole-frame mode (target_res == 0) still has to bound the model input; a
 # 40 MP frame would need tens of GB of activations on CPU.
@@ -66,6 +87,19 @@ NATIVE_CTX = 384
 # too noisy to trust.
 SEAM_RING_PX = 6
 SEAM_MIN_RING_PX = 64
+
+# Boundary refine: regions filled below REFINE_BELOW scale get a
+# REFINE_RING-thick inner band of their hole re-inpainted at native resolution
+# (with REFINE_CTX context around it). 0.75 splits where the upscale blur
+# turns visible (a ~0.72 title-band fill still shows a haze echo; ~0.8 doesn't)
+# — mildly-scaled fills aren't worth an extra inference. REFINE_MAX_PX caps
+# the refine crop fed to the model — beyond it the pass downscales just enough
+# to fit, which still beats the stage-1 scale by construction or the pass is
+# skipped.
+REFINE_BELOW = 0.75
+REFINE_RING = 96
+REFINE_CTX = 192
+REFINE_MAX_PX = 3_200_000
 
 
 def _ceil_modulo(x: int, mod: int) -> int:
@@ -122,6 +156,8 @@ class LamaModel:
         hole_res: int = 512,
         hole_thick: int = 384,
         seam_match: bool = True,
+        mask_snap: bool = True,
+        refine: bool = True,
         torch_threads: int | None = None,
     ) -> None:
         self.device = torch.device(device)
@@ -144,6 +180,8 @@ class LamaModel:
         self.hole_res = hole_res
         self.hole_thick = hole_thick
         self.seam_match = seam_match
+        self.mask_snap = mask_snap
+        self.refine = refine
 
     @torch.no_grad()
     def inpaint(
@@ -153,6 +191,8 @@ class LamaModel:
         dilate_px: int | None = None,
         feather_px: int | None = None,
         target_res: int | None = None,
+        snap: bool | None = None,
+        refine: bool | None = None,
     ) -> tuple[Image.Image, dict]:
         """Erase the white regions of ``mask`` from ``image``.
 
@@ -164,6 +204,8 @@ class LamaModel:
         dil = self.mask_dilate if dilate_px is None else dilate_px
         feather = self.mask_feather if feather_px is None else feather_px
         tres = self.target_res if target_res is None else target_res
+        do_snap = self.mask_snap if snap is None else snap
+        do_refine = self.refine if refine is None else refine
 
         image = to_rgb8(image)
         mask = mask.convert("L")
@@ -181,12 +223,16 @@ class LamaModel:
             "dilate": dil,
             "feather": feather,
             "target_res": tres,
+            "snap_px": 0,
+            "refine": [],
             "inference_ms": 0,
         }
         if not mask_arr.any():
             meta["inference_ms"] = int((time.perf_counter() - t0) * 1000)
             return image.copy(), meta
 
+        if do_snap:
+            mask_arr, meta["snap_px"] = snap_mask(np.asarray(image), mask_arr)
         mask_arr = dilate(mask_arr, dil)
         mask = Image.fromarray(mask_arr.astype("uint8") * 255)
 
@@ -194,15 +240,16 @@ class LamaModel:
         full_frame = not tres or tres <= 0
         if full_frame:
             regions = [(0, 0, h, w)]
-        elif count_runs(mask_arr) > MAX_COMPONENTS:
-            # Run count bounds the component count, so this bails out BEFORE
-            # the labeller — a speckled mask can't pin the worker.
+        elif count_runs(mask_arr) > MAX_RUNS:
+            # Checked BEFORE the labeller so a speckled mask can't pin the
+            # worker; see MAX_RUNS for the runs-vs-components calibration.
             regions = [self._global_extent(mask_arr, w, h)]
         else:
             boxes = connected_components(mask_arr)
             regions = group_regions(boxes, self.region_pad, self.min_pad, w, h)
 
         out = image.copy()
+        low_scale: list[tuple[tuple[int, int, int, int], float]] = []
         for y0, x0, y1, x1 in regions:
             if not full_frame:
                 hy0, hx0, hy1, hx1 = mask_bbox(mask_arr[y0:y1, x0:x1])
@@ -241,6 +288,11 @@ class LamaModel:
 
             meta["regions"].append([int(y0), int(x0), int(y1), int(x1)])
             meta["scales"].append(round(scale, 3))
+            if scale < REFINE_BELOW:
+                low_scale.append(((int(y0), int(x0), int(y1), int(x1)), scale))
+
+        if do_refine and low_scale:
+            out = self._refine_boundary(out, mask_arr, low_scale, feather, meta)
 
         meta["inference_ms"] = int((time.perf_counter() - t0) * 1000)
         return out, meta
@@ -249,6 +301,72 @@ class LamaModel:
         y0, x0, y1, x1 = mask_bbox(mask_arr)
         p = self.min_pad
         return (max(0, y0 - p), max(0, x0 - p), min(h, y1 + p), min(w, x1 + p))
+
+    def _refine_boundary(
+        self,
+        out: Image.Image,
+        mask_arr: np.ndarray,
+        low_scale: list[tuple[tuple[int, int, int, int], float]],
+        feather: int,
+        meta: dict,
+    ) -> Image.Image:
+        """Native-res re-synthesis of a thin inner band of every low-scale fill.
+
+        One extra model pass over the union of those bands: the band is thin so
+        context reaches all of it regardless of how bulky the original hole
+        was, the stage-1 fill supplies the interior context, and the paste
+        alpha stays clamped under the band (itself a subset of the dilated
+        hole), so the only-masked-pixels-change contract holds.
+        """
+        h, w = mask_arr.shape
+        for (y0, x0, y1, x1), s in low_scale:
+            # Ring per region, on a padded bbox slice (padded so the hole never
+            # touches the slice edge except at real image borders — erode
+            # treats beyond-edge as hole, so an unpadded slice would drop the
+            # band along the bbox sides). Per-region rings keep far-apart
+            # regions from fusing into one poster-sized refine crop.
+            sy0, sx0 = max(0, y0 - REFINE_RING - 1), max(0, x0 - REFINE_RING - 1)
+            sy1, sx1 = min(h, y1 + REFINE_RING + 1), min(w, x1 + REFINE_RING + 1)
+            sub = np.zeros((sy1 - sy0, sx1 - sx0), dtype=bool)
+            sub[y0 - sy0 : y1 - sy0, x0 - sx0 : x1 - sx0] = mask_arr[y0:y1, x0:x1]
+            ring_sub = sub & ~erode(sub, REFINE_RING)
+            if not ring_sub.any():
+                continue
+            bb = mask_bbox(ring_sub)
+            ry0 = max(0, sy0 + bb[0] - REFINE_CTX)
+            rx0 = max(0, sx0 + bb[1] - REFINE_CTX)
+            ry1 = min(h, sy0 + bb[2] + REFINE_CTX)
+            rx1 = min(w, sx0 + bb[3] + REFINE_CTX)
+            cw, ch = rx1 - rx0, ry1 - ry0
+            scale = min(1.0, math.sqrt(REFINE_MAX_PX / (cw * ch)))
+            # Below this the pass would re-fill at roughly the stage-1 scale
+            # again — no crispness to gain for a whole extra inference.
+            if scale <= s + 0.05:
+                continue
+            ring_crop = np.zeros((ch, cw), dtype=bool)
+            iy0, ix0 = max(sy0, ry0), max(sx0, rx0)
+            iy1, ix1 = min(sy1, ry1), min(sx1, rx1)
+            ring_crop[iy0 - ry0 : iy1 - ry0, ix0 - rx0 : ix1 - rx0] = ring_sub[
+                iy0 - sy0 : iy1 - sy0, ix0 - sx0 : ix1 - sx0
+            ]
+            crop_img = out.crop((rx0, ry0, rx1, ry1))
+            crop_mask = Image.fromarray(ring_crop.astype("uint8") * 255)
+            res = self._inpaint_crop(crop_img, crop_mask, scale)
+            if self.seam_match:
+                res = self._match_seam(crop_img, ring_crop, res)
+            f = feather if scale >= 0.999 else max(feather, math.ceil(1 / scale))
+            paste_mask = crop_mask
+            if f > 0:
+                blurred = crop_mask.filter(ImageFilter.GaussianBlur(f))
+                paste_mask = ImageChops.darker(blurred, crop_mask)
+            out.paste(res, (rx0, ry0), paste_mask)
+            meta["refine"].append(
+                {
+                    "box": [int(ry0), int(rx0), int(ry1), int(rx1)],
+                    "scale": round(scale, 3),
+                }
+            )
+        return out
 
     def _inpaint_crop(
         self, crop_img: Image.Image, crop_mask: Image.Image, scale: float
@@ -291,9 +409,9 @@ class LamaModel:
     def _inpaint_full(self, image: Image.Image, mask: Image.Image) -> Image.Image:
         orig_w, orig_h = image.size
 
-        img = _norm_img(np.array(image))          # 3 x H x W, [0,1]
-        msk = _norm_img(np.array(mask))           # 1 x H x W, [0,1]
-        msk = (msk > 0) * 1.0                      # binarise: white(255) -> 1
+        img = _norm_img(np.array(image))  # 3 x H x W, [0,1]
+        msk = _norm_img(np.array(mask))  # 1 x H x W, [0,1]
+        msk = (msk > 0) * 1.0  # binarise: white(255) -> 1
 
         img = _pad_to_modulo(img, PAD_MODULO)
         msk = _pad_to_modulo(msk, PAD_MODULO)
@@ -301,8 +419,8 @@ class LamaModel:
         img_t = torch.from_numpy(img).unsqueeze(0).to(self.device)
         msk_t = torch.from_numpy(msk).unsqueeze(0).float().to(self.device)
 
-        out = self.model(img_t, msk_t)             # 1 x 3 x Hp x Wp, [0,1]
+        out = self.model(img_t, msk_t)  # 1 x 3 x Hp x Wp, [0,1]
         out = out[0].permute(1, 2, 0).detach().cpu().numpy()
         out = np.clip(out * 255, 0, 255).astype("uint8")
-        out = out[:orig_h, :orig_w]                # drop the modulo padding
+        out = out[:orig_h, :orig_w]  # drop the modulo padding
         return Image.fromarray(out)
