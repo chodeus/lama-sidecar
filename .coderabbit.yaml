@@ -44,3 +44,48 @@ reviews:
         CPU-only torch from the pytorch index (not PyPI's CUDA build), and
         setuptools patched LAST so no later pip step reintroduces the base
         image's vulnerable version.
+        Also: never bake a secret into ARG/ENV or a RUN argv (both persist in
+        image history), and don't let a recursive chown/chmod follow a COPY —
+        it re-materialises the whole tree in a new layer. Use COPY --chown.
+    - path: "test_*.py"
+      instructions: |-
+        Tests (run without the model in the fast CI job):
+        - No side-effecting call inside an assert — python -O strips assert
+          statements and takes the call with them. Bind to a local, then assert.
+        - A guard that cannot fail is worse than none: an assertion reachable
+          only when a list is non-empty passes vacuously. Pair it with a control
+          that fails when the defect is injected.
+        - test_regions.py must stay importable without torch, or the fast job
+          silently starts testing nothing.
+    - path: "requirements.txt"
+      instructions: |-
+        Dependency manifest for a CPU-only image:
+        - torch/torchvision must stay the CPU wheels; a change pulling the
+          default PyPI build drags in CUDA and multiplies the image size.
+        - An extra pulls that extra's whole transitive set — confirm the code
+          path needing it still exists. Deleting a feature must drop its
+          dependency in the same change.
+        - A pin whose only justification is dodging a CVE in a transitive dep:
+          check the consumer is still reachable, then drop it rather than
+          maintain the pin.
+    - path: "entrypoint.sh"
+      instructions: |-
+        Quote every variable expansion, fail fast on missing required config,
+        and never echo the API key — including under `set -x`.
+    - path: ".github/workflows/**"
+      instructions: |-
+        CI and the GHCR release:
+        - A security gate (Trivy, audit) that becomes non-blocking must have
+          every downstream step that relied on it audited in the same change.
+        - Enumerate allowed states positively (== 'success' || == 'skipped'),
+          never by negation — a third state slips through `!= 'failure'`.
+        - Pin third-party actions by commit SHA; never echo a token or
+          interpolate untrusted input straight into a `run:` block.
+
+  tools:
+    gitleaks:
+      enabled: true
+    hadolint:
+      enabled: true
+    actionlint:
+      enabled: true
