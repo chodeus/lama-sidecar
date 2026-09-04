@@ -215,7 +215,7 @@ class SnapMask(unittest.TestCase):
         rgb[10:50, 20:180] = 0
         hole = np.zeros((60, 200), dtype=bool)
         hole[8:52, 18:150] = True  # covers ~81% of a 6400px component
-        grown, added = snap_mask(rgb, hole, max_area_frac=0.5)
+        _, added = snap_mask(rgb, hole, max_area_frac=0.5)
         self.assertEqual(added, 0)
 
     def test_strong_level_rescues_soft_fused_stroke(self):
@@ -257,7 +257,7 @@ class SnapMask(unittest.TestCase):
     def test_empty_hole_passthrough(self):
         rgb = self._flat_rgb(20, 20)
         hole = np.zeros((20, 20), dtype=bool)
-        grown, added = snap_mask(rgb, hole)
+        _, added = snap_mask(rgb, hole)
         self.assertEqual(added, 0)
 
 

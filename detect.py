@@ -87,9 +87,12 @@ def _download_model(dest: str) -> None:
             shutil.copyfileobj(resp, fh)
         if _sha256(tmp_whl) != WHEEL_SHA256:
             raise RuntimeError("rapidocr wheel failed SHA256 verification")
-        with zipfile.ZipFile(tmp_whl) as whl:
-            with whl.open(MODEL_MEMBER) as src, open(tmp, "wb") as fh:
-                shutil.copyfileobj(src, fh)
+        with (
+            zipfile.ZipFile(tmp_whl) as whl,
+            whl.open(MODEL_MEMBER) as src,
+            open(tmp, "wb") as fh,
+        ):
+            shutil.copyfileobj(src, fh)
         if _sha256(tmp) != MODEL_SHA256:
             raise RuntimeError("det model failed SHA256 verification")
         os.replace(tmp, dest)
@@ -120,8 +123,8 @@ def _net_size(w: int, h: int) -> tuple[int, int]:
     if min(w, h) < LIMIT_SIDE_LEN:
         ratio = LIMIT_SIDE_LEN / min(w, h)
     ratio = min(ratio, MAX_NET_EDGE / max(w, h))
-    rw = max(32, int(round(w * ratio / 32)) * 32)
-    rh = max(32, int(round(h * ratio / 32)) * 32)
+    rw = max(32, round(w * ratio / 32) * 32)
+    rh = max(32, round(h * ratio / 32) * 32)
     return rw, rh
 
 

@@ -69,11 +69,11 @@ MODEL_PATH = os.environ.get("LAMA_MODEL_PATH", "/models/big-lama.pt")
 # body cap is enforced by middleware BEFORE the JSON is buffered/parsed — the
 # per-field checks alone would only fire after the whole body sat in memory.
 MAX_B64_CHARS = int(
-    os.environ.get("LAMA_MAX_B64_CHARS", 64 * 1024 * 1024)
+    os.environ.get("LAMA_MAX_B64_CHARS", str(64 * 1024 * 1024))
 )  # ~48MB binary
-MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", 40_000_000))  # 40 MP per image
+MAX_PIXELS = int(os.environ.get("LAMA_MAX_PIXELS", str(40_000_000)))  # 40 MP per image
 MAX_BODY_BYTES = int(
-    os.environ.get("LAMA_MAX_BODY_BYTES", 2 * MAX_B64_CHARS + (16 << 20))
+    os.environ.get("LAMA_MAX_BODY_BYTES", str(2 * MAX_B64_CHARS + (16 << 20)))
 )
 
 # Per-region adaptive reconstruction (see lama.py). TARGET_RES caps the crop
@@ -81,18 +81,18 @@ MAX_BODY_BYTES = int(
 # also bounds a native-resolution pass, so a very wide text band downscales
 # instead of running full-size for no visible gain over busy texture. 0 switches
 # to a single whole-frame region.
-TARGET_RES = int(os.environ.get("LAMA_TARGET_RES", 1400))
-REGION_PAD = float(os.environ.get("LAMA_REGION_PAD", 0.5))
-REGION_MIN_PAD = int(os.environ.get("LAMA_REGION_MIN_PAD", 64))
-HOLE_RES = int(os.environ.get("LAMA_HOLE_RES", 512))
-HOLE_THICK = int(os.environ.get("LAMA_HOLE_THICK", 384))
+TARGET_RES = int(os.environ.get("LAMA_TARGET_RES", "1400"))
+REGION_PAD = float(os.environ.get("LAMA_REGION_PAD", "0.5"))
+REGION_MIN_PAD = int(os.environ.get("LAMA_REGION_MIN_PAD", "64"))
+HOLE_RES = int(os.environ.get("LAMA_HOLE_RES", "512"))
+HOLE_THICK = int(os.environ.get("LAMA_HOLE_THICK", "384"))
 SEAM_MATCH = os.environ.get("LAMA_SEAM_MATCH", "1") not in ("0", "false", "no")
 
 # Grow the incoming mask by N px before inpainting so a logo's anti-aliased fringe
 # and soft glow get erased too (otherwise they survive as a ghost outline); feather
 # softens the composite seam (inward only). Both overridable per request.
-MASK_DILATE = int(os.environ.get("LAMA_MASK_DILATE", 5))
-MASK_FEATHER = int(os.environ.get("LAMA_MASK_FEATHER", 2))
+MASK_DILATE = int(os.environ.get("LAMA_MASK_DILATE", "5"))
+MASK_FEATHER = int(os.environ.get("LAMA_MASK_FEATHER", "2"))
 
 # Snap: swallow whole high-contrast strokes the mask already mostly covers, so
 # a brush that clips a glyph edge doesn't leave a smear-anchoring stub. Refine:
@@ -104,7 +104,7 @@ REFINE = os.environ.get("LAMA_REFINE", "1") not in ("0", "false", "no")
 
 # One inference at a time by default: a single pass already uses every core,
 # so parallel requests only oversubscribe CPU and multiply peak memory.
-MAX_CONCURRENCY = int(os.environ.get("LAMA_MAX_CONCURRENCY", 1))
+MAX_CONCURRENCY = int(os.environ.get("LAMA_MAX_CONCURRENCY", "1"))
 
 # Optional shared secret; when set, /api/v1/* require it (X-API-Key or Bearer).
 API_KEY = os.environ.get("LAMA_API_KEY", "")
