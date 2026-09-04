@@ -86,7 +86,7 @@ def _run_scan(mask: np.ndarray):
     True segments are union-found against the previous row's. No scipy/cv2
     needed; cost scales with the number of runs — callers must pre-bound that
     with count_runs()."""
-    h, w = mask.shape
+    h = mask.shape[0]
     parent: dict[int, int] = {}
 
     def find(a: int) -> int:

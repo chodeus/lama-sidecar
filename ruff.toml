@@ -1,0 +1,3 @@
+# Runtime is python:3.14-slim (Dockerfile). Absent this, ruff assumes py39 and
+# version-gated rules judge the code against the wrong interpreter.
+target-version = "py314"
