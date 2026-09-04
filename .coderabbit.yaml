@@ -5,8 +5,22 @@
 language: "en-US"
 
 reviews:
-  profile: "chill"
+  # assertive: chill passed a diff clean that assertive flagged with two Major findings (2026-09-03); the "**" rule keeps style nits out
+  profile: "assertive"
   request_changes_workflow: false
+  pre_merge_checks:
+    # off: the 80% docstring-coverage warning contradicts the one-line-docstring rule under "**"
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+      requirements: |-
+        Conventional Commits, `type(scope)?: subject`. release-please reads the
+        squash-merge title to pick the next version: feat bumps minor, fix bumps
+        patch, a `!` after the type or a BREAKING CHANGE footer bumps major, and
+        chore/ci/test/build are hidden from the changelog and never release on
+        their own. Flag a title whose type understates the diff (a behaviour
+        change labelled chore or ci ships unversioned) or overstates it.
   auto_review:
     enabled: true
     drafts: false
@@ -81,6 +95,14 @@ reviews:
           never by negation — a third state slips through `!= 'failure'`.
         - Pin third-party actions by commit SHA; never echo a token or
           interpolate untrusted input straight into a `run:` block.
+    - path: "unraid/*.xml"
+      instructions: |-
+        Published Unraid CA template: <Network> stays bridge (the personal
+        network belongs only in the user's my-*.xml); LAMA_API_KEY keeps
+        Mask="true" and its description keeps stating that an empty value
+        disables auth; LAMA_MODEL_SHA256 must equal the checksum the model loader
+        verifies at start; every LAMA_* variable must exist in the code with the
+        same default. Flag a new credential-shaped variable without Mask="true".
     - path: "**"
       instructions: |-
         Applies to every file, whatever the language:
@@ -88,9 +110,16 @@ reviews:
           what a non-obvious block does, or the gotcha it guards. No why/history
           essays, no before/after narrative, no restating the code, no section
           banners. Docstrings: one line unless the signature genuinely cannot
-          carry it.
+          carry it. Never ask for a docstring to be added; a missing docstring
+          is not a finding.
         - The 1-2 line cap wins even inside an already heavily-commented file —
           matching local density is not licence to exceed it.
+        - A comment, docstring, help text, column header, log message or UI label
+          that disagrees with what the code does is a correctness finding, not a
+          stale-comment nit: report it and say which side is wrong.
+        - Do not flag stylistic preferences that are consistent across the file
+          (naming, quoting, import order, formatting, line length). Report
+          correctness, security, data-loss and the classes named above.
 
   tools:
     gitleaks:
