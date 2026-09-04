@@ -12,7 +12,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # curl for the model download in entrypoint.sh; clean apt lists to stay slim.
+# Upgrade first: the pinned base lags trixie-security, which Trivy fails on.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
