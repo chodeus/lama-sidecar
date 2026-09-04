@@ -1,7 +1,7 @@
 # torch is installed separately in the Dockerfile from the CPU wheel index
 # to avoid pulling ~2GB of CUDA libraries we don't use.
 fastapi==0.139.2
-uvicorn[standard]==0.51.0
+uvicorn[standard]==0.52.4
 pydantic==2.13.4
 pillow==12.3.0
 numpy==2.5.1
@@ -9,4 +9,4 @@ numpy==2.5.1
 # fetched lazily from the pinned rapidocr wheel (see detect.py — the rapidocr
 # package itself needs full opencv-python, whose Qt links libGL the slim image
 # doesn't have).
-onnxruntime==1.27.0
+onnxruntime==1.29.0
