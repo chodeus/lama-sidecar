@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/chodeus/lama-sidecar/compare/v1.6.0...v1.6.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* apply Debian security updates in the image build ([3490f29](https://github.com/chodeus/lama-sidecar/commit/3490f29db1f7421fb5f69199a294cd8b7e82e590))
+
 ## [1.6.0](https://github.com/chodeus/lama-sidecar/compare/v1.5.1...v1.6.0) (2026-07-22)
 
 
