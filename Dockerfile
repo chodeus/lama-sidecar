@@ -28,8 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Patch setuptools LAST so no earlier pip step reintroduces the base image's
 # 70.2.0 (CVE-2025-47273 path traversal, fixed in 78.1.1) that Trivy fails on.
-# Pinned exactly for reproducible builds; bump deliberately.
-RUN pip install --no-cache-dir --upgrade setuptools==82.0.1 \
+# Floor not pin, so later security fixes land without a Dockerfile edit.
+RUN pip install --no-cache-dir --upgrade 'setuptools>=82.0.1' \
     && python -c "import setuptools, sys; assert tuple(map(int, setuptools.__version__.split('.')[:2])) >= (78, 1), setuptools.__version__"
 
 COPY app.py lama.py regions.py detect.py upscale.py entrypoint.sh ./
