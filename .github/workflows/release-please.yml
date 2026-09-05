@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@6830c339d8517809f8bab5ff6e9179f60f92e891 # main
+    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@a08ae6259fdba04b2f97e846544e8afdb8bb36fd # main
 
   # Tags created by release-please use GITHUB_TOKEN, which does not trigger
   # other workflows — so we publish the image here, gated on the release
