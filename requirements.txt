@@ -9,4 +9,4 @@ numpy==2.5.3
 # fetched lazily from the pinned rapidocr wheel (see detect.py — the rapidocr
 # package itself needs full opencv-python, whose Qt links libGL the slim image
 # doesn't have).
-onnxruntime==1.29.0
+onnxruntime==1.30.0
