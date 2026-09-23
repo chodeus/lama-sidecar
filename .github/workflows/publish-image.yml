@@ -1,9 +1,7 @@
 name: Publish image
 
-# release-please.yml calls this with the new tag; a daily image refresh, or a
-# hand run, dispatches it with no tag to rebuild the latest release on today's
-# base packages. Either way the image is built, scanned and smoke-tested
-# before anything reaches GHCR.
+# Called by release-please.yml with the new tag; dispatched with no tag (image refresh,
+# or by hand) to rebuild the latest release on today's base packages.
 
 on:
   workflow_call:
@@ -38,8 +36,13 @@ jobs:
           TAG_INPUT: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${TAG_INPUT:-$(gh release view --json tagName --jq .tagName)}"
+          latest=$(gh release view --json tagName --jq .tagName)
+          tag="${TAG_INPUT:-$latest}"
           version="${tag#v}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::tag '${tag}' is not vX.Y.Z."; exit 1 ;;
+          esac
           major="${version%%.*}"
           rest="${version#*.}"
           minor="${rest%%.*}"
@@ -48,6 +51,7 @@ jobs:
             echo "version=${version}"
             echo "major=${major}"
             echo "minor=${minor}"
+            if [ "$tag" = "$latest" ]; then echo "is_latest=true"; else echo "is_latest=false"; fi
           } >> "$GITHUB_OUTPUT"
           echo "Building ${tag} (${version}, ${major}.${minor})"
 
@@ -65,16 +69,17 @@ jobs:
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
+          # Labels and the sha tag come from the checked-out tag, not the dispatching commit.
+          context: git
           images: ghcr.io/chodeus/lama-sidecar
           tags: |
             type=raw,value=${{ steps.tag.outputs.version }}
-            type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }}
+            type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }},enable=${{ steps.tag.outputs.is_latest }}
             type=sha
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ steps.tag.outputs.is_latest }}
 
-      # Build locally first so the image is scanned and smoke-tested BEFORE
-      # anything reaches GHCR — a release must never ship an unvetted image.
-      # The final push step reuses the build cache, so it costs almost nothing.
+      # Built locally and gated before anything reaches GHCR; the push step
+      # below reuses this build's cache.
       - name: Build image (local, no push)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
@@ -83,9 +88,8 @@ jobs:
           load: true
           tags: lama-sidecar:release-test
 
-      # Same gate as ci.yml: fail on any fixable HIGH/CRITICAL before the image
-      # ships; ignore-unfixed skips OS CVEs with no upstream patch. Consciously
-      # accepted fixable CVEs live in .trivyignore with a rationale.
+      # Same gate as ci.yml. An accepted fixable CVE goes in .trivyignore with
+      # its rationale.
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -116,9 +120,8 @@ jobs:
       - name: Verify model checksum
         run: echo "e3aa4aaa15225a33ec84f9f4bc47e500  model-cache/big-lama.pt" | md5sum -c -
 
-      # Writable mount: the smoke test exercises /detect and /upscale, whose
-      # models download lazily into /models (as uid 99, hence the chmod). The
-      # verified big-lama.pt is already in place, so that download is skipped.
+      # Writable mount: /detect and /upscale download their models into /models
+      # as uid 99, hence the chmod.
       - name: Start container
         run: |
           chmod 777 model-cache
