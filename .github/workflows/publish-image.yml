@@ -1,0 +1,165 @@
+name: Publish image
+
+# Called by release-please.yml with the new tag; dispatched with no tag (image refresh,
+# or by hand) to rebuild the latest release on today's base packages.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to build, e.g. v1.4.2.'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build. Empty = the latest release.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve the tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_INPUT:-$(gh release view --json tagName --jq .tagName)}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '${tag}' is not vX.Y.Z."; exit 1
+          fi
+          version="${tag#v}"
+          major="${version%%.*}"
+          rest="${version#*.}"
+          minor="${rest%%.*}"
+          {
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "major=${major}"
+            echo "minor=${minor}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building ${tag} (${version}, ${major}.${minor})"
+
+      - name: Checkout at the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Built locally and gated before anything reaches GHCR; the push step
+      # below reuses this build's cache.
+      - name: Build image (local, no push)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: lama-sidecar:release-test
+
+      # Same gate as ci.yml. An accepted fixable CVE goes in .trivyignore with
+      # its rationale.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          # The action's default trivy trails its own releases; pin the scanner.
+          version: v0.74.0 # renovate: aquasecurity/trivy
+          image-ref: lama-sidecar:release-test
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      # Cache the model file (keyed on its MD5) so we don't re-download 200MB
+      # every release; shares the cache ci.yml populates on main.
+      - name: Restore model cache
+        id: model-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: model-cache/big-lama.pt
+          key: big-lama-e3aa4aaa15225a33ec84f9f4bc47e500
+
+      - name: Download model
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p model-cache
+          curl -fSL https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt \
+            -o model-cache/big-lama.pt
+
+      - name: Verify model checksum
+        run: echo "e3aa4aaa15225a33ec84f9f4bc47e500  model-cache/big-lama.pt" | md5sum -c -
+
+      # Writable mount: /detect and /upscale download their models into /models
+      # as uid 99, hence the chmod.
+      - name: Start container
+        run: |
+          chmod 777 model-cache
+          docker run -d --name lama -p 8418:8418 \
+            -v "$PWD/model-cache:/models" lama-sidecar:release-test
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8418/health | grep -q '"model_loaded":true'; then
+              echo "healthy after ${i} tries"; exit 0
+            fi
+            sleep 5
+          done
+          echo "container never became healthy"; docker logs lama; exit 1
+
+      - name: Smoke test (real inpaint)
+        run: |
+          pip install requests pillow numpy
+          python test_smoke.py http://localhost:8418
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs lama || true
+
+      # Checked at publication time, so a release published mid-build is not overtaken.
+      - name: Is this the latest release?
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          latest=$(gh release view --json tagName --jq .tagName)
+          if [ "$TAG" = "$latest" ]; then echo "is_latest=true"; else echo "is_latest=false"; fi >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          # Labels and the sha tag come from the checked-out tag, not the dispatching commit.
+          context: git
+          images: ghcr.io/chodeus/lama-sidecar
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.version }}
+            type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }},enable=${{ steps.latest.outputs.is_latest }}
+            type=sha
+            type=raw,value=latest,enable=${{ steps.latest.outputs.is_latest }}
+
+      - name: Push image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
