@@ -36,13 +36,11 @@ jobs:
           TAG_INPUT: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          latest=$(gh release view --json tagName --jq .tagName)
-          tag="${TAG_INPUT:-$latest}"
+          tag="${TAG_INPUT:-$(gh release view --json tagName --jq .tagName)}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '${tag}' is not vX.Y.Z."; exit 1
+          fi
           version="${tag#v}"
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::tag '${tag}' is not vX.Y.Z."; exit 1 ;;
-          esac
           major="${version%%.*}"
           rest="${version#*.}"
           minor="${rest%%.*}"
@@ -51,7 +49,6 @@ jobs:
             echo "version=${version}"
             echo "major=${major}"
             echo "minor=${minor}"
-            if [ "$tag" = "$latest" ]; then echo "is_latest=true"; else echo "is_latest=false"; fi
           } >> "$GITHUB_OUTPUT"
           echo "Building ${tag} (${version}, ${major}.${minor})"
 
@@ -65,18 +62,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          # Labels and the sha tag come from the checked-out tag, not the dispatching commit.
-          context: git
-          images: ghcr.io/chodeus/lama-sidecar
-          tags: |
-            type=raw,value=${{ steps.tag.outputs.version }}
-            type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }},enable=${{ steps.tag.outputs.is_latest }}
-            type=sha
-            type=raw,value=latest,enable=${{ steps.tag.outputs.is_latest }}
 
       # Built locally and gated before anything reaches GHCR; the push step
       # below reuses this build's cache.
@@ -146,6 +131,30 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: docker logs lama || true
+
+      # Checked at publication time, so a release published mid-build is not overtaken.
+      - name: Is this the latest release?
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          latest=$(gh release view --json tagName --jq .tagName)
+          if [ "$TAG" = "$latest" ]; then echo "is_latest=true"; else echo "is_latest=false"; fi >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          # Labels and the sha tag come from the checked-out tag, not the dispatching commit.
+          context: git
+          images: ghcr.io/chodeus/lama-sidecar
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.version }}
+            type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }},enable=${{ steps.latest.outputs.is_latest }}
+            type=sha
+            type=raw,value=latest,enable=${{ steps.latest.outputs.is_latest }}
 
       - name: Push image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
