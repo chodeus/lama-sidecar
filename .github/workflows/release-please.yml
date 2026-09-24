@@ -8,11 +8,13 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # release-please.yml approves its release PR's CI runs.
+  actions: write
   packages: write
 
 jobs:
   release:
-    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@6830c339d8517809f8bab5ff6e9179f60f92e891 # main
+    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@1fcf653ea7ccc8c3cc5b8897d38c4b3f640010c0 # main
 
   # Tags created by release-please use GITHUB_TOKEN, which does not trigger
   # other workflows — so we publish the image here, gated on the release
