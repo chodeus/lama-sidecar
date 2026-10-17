@@ -3,7 +3,7 @@
 fastapi==0.143.3
 uvicorn[standard]==0.54.0
 pydantic==2.14.1
-pillow==12.3.0
+pillow==13.0.0
 numpy==2.5.4
 # detect.py runs the PP-OCRv6 det model under onnxruntime; the model file is
 # fetched lazily from the pinned rapidocr wheel (see detect.py — the rapidocr
