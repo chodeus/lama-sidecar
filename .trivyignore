@@ -9,3 +9,10 @@
 # Example:
 # # only exploitable via feature X; not installed/enabled in this image
 # CVE-2099-12345
+
+# pip's bundled msgpack, setuptools (pkg_resources) and urllib3, read from pip's SBOM in the base image; this service never runs pip.
+# pip 26.2.1, the latest, still bundles these versions; the expiry forces a recheck.
+GHSA-6v7p-g79w-8964 exp:2027-01-20
+CVE-2025-47273 exp:2027-01-20
+CVE-2026-97687 exp:2027-01-20
+CVE-2026-97689 exp:2027-01-20
