@@ -73,7 +73,7 @@ jobs:
           load: true
           tags: lama-sidecar:release-test
 
-      # Same gate as ci.yml. An accepted fixable CVE goes in .trivyignore with
+      # Same gate as ci.yml. An accepted fixable CVE goes in .trivyignore.yaml with
       # its rationale.
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -85,6 +85,7 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
 
       # Cache the model file (keyed on its MD5) so we don't re-download 200MB
       # every release; shares the cache ci.yml populates on main.

@@ -151,7 +151,7 @@ python test_smoke.py http://HOST:8418     # end-to-end against a running sidecar
 ## Release
 
 Push a `vX.Y.Z` tag via release-please — CI lints, unit-tests, builds, Trivy-scans
-(no `ignore-unfixed`; reviewed exceptions live in `.trivyignore` with rationale),
+(fixable HIGH/CRITICAL only; reviewed exceptions live in `.trivyignore.yaml` with rationale),
 and runs a real-inpaint test. The release workflow rebuilds, **re-scans and
 re-smoke-tests the exact image before it is pushed** to GHCR.
 
