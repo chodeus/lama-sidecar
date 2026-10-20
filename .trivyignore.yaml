@@ -1,0 +1,30 @@
+# Trivy ignore list for the lama-sidecar image scans (CI and release), passed to
+# both scan steps as `trivyignores`.
+#
+# The scan runs with ignore-unfixed, so unpatched base-OS CVEs (nothing we can
+# action) don't wedge the build. This file is for a *fixable* HIGH/CRITICAL we
+# consciously accept anyway. Scope each entry to the affected package version
+# (`purls`), so the same CVE anywhere else in the image still fails the scan;
+# give it a `statement` saying why the vulnerable path can't be hit here or why
+# the fix is deferred, and an `expired_at` so it gets rechecked. An entry
+# without a statement counts as unreviewed — remove it.
+vulnerabilities:
+  - id: GHSA-6v7p-g79w-8964
+    purls: ["pkg:pypi/msgpack@1.1.2"]
+    statement: &pip-bundled >-
+      pip's own bundled copy, listed in pip's SBOM (pip/_vendor/bom.cdx.json) in the
+      python:3.14-slim base; the service never runs pip. pip 26.2.1, the latest,
+      still bundles this version.
+    expired_at: 2027-01-20
+  - id: CVE-2025-47273
+    purls: ["pkg:pypi/setuptools@70.3.0"]
+    statement: *pip-bundled
+    expired_at: 2027-01-20
+  - id: CVE-2026-97687
+    purls: ["pkg:pypi/urllib3@2.7.0"]
+    statement: *pip-bundled
+    expired_at: 2027-01-20
+  - id: CVE-2026-97689
+    purls: ["pkg:pypi/urllib3@2.7.0"]
+    statement: *pip-bundled
+    expired_at: 2027-01-20
