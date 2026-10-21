@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/chodeus/lama-sidecar/compare/v1.6.1...v1.6.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** upgrade pip so its bundled certifi drops the eMudhra roots ([7e10f6f](https://github.com/chodeus/lama-sidecar/commit/7e10f6fe9b090e96587f7edc1d7496f8327186c8))
+
 ## [1.6.1](https://github.com/chodeus/lama-sidecar/compare/v1.6.0...v1.6.1) (2026-09-04)
 
 
