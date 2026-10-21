@@ -26,10 +26,10 @@ RUN pip install --no-cache-dir torch==2.12.1 \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Patch setuptools LAST so no earlier pip step reintroduces the base image's
-# 70.2.0 (CVE-2025-47273 path traversal, fixed in 78.1.1) that Trivy fails on.
-# Floor not pin, so later security fixes land without a Dockerfile edit.
-RUN pip install --no-cache-dir --upgrade 'setuptools>=82.0.1' \
+# Patch setuptools and pip LAST so no earlier pip step reintroduces the base image's
+# setuptools 70.2.0 (CVE-2025-47273) or pip 26.2.1, whose vendored certifi still trusts
+# the compromised eMudhra roots (GHSA-6q48-6c7w-9gw2). Floors, not pins.
+RUN pip install --no-cache-dir --upgrade 'setuptools>=82.0.1' 'pip>=26.2.2' \
     && python -c "import setuptools, sys; assert tuple(map(int, setuptools.__version__.split('.')[:2])) >= (78, 1), setuptools.__version__"
 
 COPY app.py lama.py regions.py detect.py upscale.py entrypoint.sh ./
