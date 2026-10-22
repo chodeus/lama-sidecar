@@ -10,6 +10,9 @@ on:
         description: 'Release tag to build, e.g. v1.4.2.'
         required: true
         type: string
+    secrets:
+      DISCORD_WEBHOOK_URL:
+        required: false
   workflow_dispatch:
     inputs:
       tag:
@@ -164,3 +167,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  notify-failure:
+    needs: docker
+    if: failure()
+    permissions: {}
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@cbd544d21103cfe854c8e0ec717ee2be4f097ad7 # main
+    with:
+      event_type: build
+      status: failure
+      title: "❌ Image publish failed: ${{ inputs.tag || 'latest release' }}"
+      commit_sha: ${{ github.sha }}
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

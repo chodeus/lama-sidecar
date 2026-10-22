@@ -14,7 +14,9 @@ permissions:
 
 jobs:
   release:
-    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@aaf1f3e848f30db28548cd5a5eb2768b5dd71229 # main
+    uses: chodeus/chodeus-ops/.github/workflows/release-please.yml@cbd544d21103cfe854c8e0ec717ee2be4f097ad7 # main
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
   # Tags created by release-please use GITHUB_TOKEN, which does not trigger
   # other workflows — so we publish the image here, gated on the release
@@ -28,3 +30,5 @@ jobs:
     uses: ./.github/workflows/publish-image.yml
     with:
       tag: ${{ needs.release.outputs.tag_name }}
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

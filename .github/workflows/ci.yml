@@ -97,3 +97,18 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: docker logs lama || true
+
+  notify-failure:
+    needs: [lint, build-test]
+    if: failure() && github.event_name != 'pull_request'
+    permissions: {}
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@cbd544d21103cfe854c8e0ec717ee2be4f097ad7 # main
+    with:
+      event_type: build
+      status: failure
+      title: "❌ CI failed: ${{ github.ref_name }}"
+      description: Lint or the build test failed; see the run.
+      commit_sha: ${{ github.sha }}
+      needs: ${{ toJSON(needs) }}
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
