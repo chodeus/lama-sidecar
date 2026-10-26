@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.3](https://github.com/chodeus/lama-sidecar/compare/v1.6.2...v1.6.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** pin filelock 4.2.4 over torch's index copy (CVE-2026-112940) ([#74](https://github.com/chodeus/lama-sidecar/issues/74)) ([0f87757](https://github.com/chodeus/lama-sidecar/commit/0f877573753d35c9adc81c4e84a36e922ad06984))
+
 ## [1.6.2](https://github.com/chodeus/lama-sidecar/compare/v1.6.1...v1.6.2) (2026-10-21)
 
 
