@@ -19,8 +19,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # CPU-only torch — keeps the image ~1.5GB instead of ~5GB with CUDA.
-# 2.12.1 fixes CVE-2025-3000.
-RUN pip install --no-cache-dir torch==2.12.1 \
+# renovate: datasource=pypi depName=torch
+ARG TORCH_VERSION=2.14.1
+RUN pip install --no-cache-dir "torch==${TORCH_VERSION}" \
     --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
