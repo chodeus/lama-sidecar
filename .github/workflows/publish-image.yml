@@ -40,6 +40,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      superseded_by: ${{ steps.latest.outputs.superseded_by }}
     steps:
       - name: Resolve the tag
         id: tag
@@ -174,6 +176,7 @@ jobs:
               is_latest=false; version_tags=false
               echo "::warning::main is now ${head:0:7} and the latest release ${latest}, so this build of ${REF:0:7} publishes only its sha tag."
             fi
+            if [ "$head" != "$REF" ]; then echo "superseded_by=${head}" >> "$GITHUB_OUTPUT"; fi
           fi
           {
             echo "is_latest=${is_latest}"
@@ -200,8 +203,33 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  notify-failure:
+  # A push outside the path filter starts no build, so an overtaken main build queues one for the new head.
+  replace:
     needs: docker
+    if: needs.docker.outputs.superseded_by != ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Queue a build of main's new head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ needs.docker.outputs.superseded_by }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          waiting=$(gh run list --workflow publish-image.yml --limit 50 --json databaseId,headSha,status \
+            --jq "[.[] | select(.headSha == \"${HEAD_SHA}\" and .status != \"completed\" and .databaseId != ${RUN_ID})] | length")
+          if [ "$waiting" -gt 0 ]; then
+            echo "A build of ${HEAD_SHA:0:7} is already queued or running."
+            exit 0
+          fi
+          gh workflow run publish-image.yml --ref main
+          echo "Queued a build of main (${HEAD_SHA:0:7})."
+
+  notify-failure:
+    needs: [docker, replace]
     if: failure()
     permissions: {}
     uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@cbd544d21103cfe854c8e0ec717ee2be4f097ad7 # main
