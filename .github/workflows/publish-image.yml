@@ -1,7 +1,7 @@
 name: Publish image
 
-# Called by release-please.yml with the new tag; dispatched with no tag (image refresh,
-# or by hand) to rebuild the latest release on today's base packages.
+# Called by release-please.yml with the new tag. Without one (a dependency push to main, the
+# image refresh, or by hand) it builds main and publishes it under the latest release's tags.
 
 on:
   workflow_call:
@@ -13,10 +13,16 @@ on:
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
+  # Dependency bumps ship as an image rebuild, not a release.
+  push:
+    branches: [main]
+    paths:
+      - 'requirements.txt'
+      - 'Dockerfile'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build. Empty = the latest release.'
+        description: 'Release tag to build. Empty = main, under the latest release tags.'
         required: false
         type: string
         default: ''
@@ -26,6 +32,10 @@ permissions:
 
 jobs:
   docker:
+    # queue: max keeps every waiting run; the default replaces a pending one and would drop a release build.
+    concurrency:
+      group: publish-image
+      queue: max
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,6 +49,9 @@ jobs:
           TAG_INPUT: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          if [ -z "$TAG_INPUT" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::without a tag only main is built, not ${GITHUB_REF}."; exit 1
+          fi
           tag="${TAG_INPUT:-$(gh release view --json tagName --jq .tagName)}"
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::tag '${tag}' is not vX.Y.Z."; exit 1
@@ -47,18 +60,21 @@ jobs:
           major="${version%%.*}"
           rest="${version#*.}"
           minor="${rest%%.*}"
+          ref="${TAG_INPUT:+$tag}"
+          ref="${ref:-$GITHUB_SHA}"
           {
             echo "tag=${tag}"
+            echo "ref=${ref}"
             echo "version=${version}"
             echo "major=${major}"
             echo "minor=${minor}"
           } >> "$GITHUB_OUTPUT"
-          echo "Building ${tag} (${version}, ${major}.${minor})"
+          echo "Building ${ref} as ${tag} (${version}, ${major}.${minor})"
 
-      - name: Checkout at the tag
+      - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ steps.tag.outputs.ref }}
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -136,26 +152,42 @@ jobs:
         if: failure()
         run: docker logs lama || true
 
-      # Checked at publication time, so a release published mid-build is not overtaken.
-      - name: Is this the latest release?
+      # Checked at publication time, so a release published mid-build is not overtaken, and a
+      # main build only tags the newest main; anything older keeps just its sha tag.
+      - name: Decide which tags to publish
         id: latest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tag.outputs.tag }}
+          REF: ${{ steps.tag.outputs.ref }}
         run: |
           set -euo pipefail
           latest=$(gh release view --json tagName --jq .tagName)
-          if [ "$TAG" = "$latest" ]; then echo "is_latest=true"; else echo "is_latest=false"; fi >> "$GITHUB_OUTPUT"
+          is_latest=false; version_tags=true
+          [ "$TAG" = "$latest" ] && is_latest=true
+          if [ "$REF" != "$TAG" ]; then
+            if ! head=$(git ls-remote --exit-code origin refs/heads/main | cut -f1); then
+              echo "::error::Could not read main from origin, so nothing is published."; exit 1
+            fi
+            if [ "$head" != "$REF" ] || [ "$is_latest" != true ]; then
+              is_latest=false; version_tags=false
+              echo "::warning::main is now ${head:0:7} and the latest release ${latest}, so this build of ${REF:0:7} publishes only its sha tag."
+            fi
+          fi
+          {
+            echo "is_latest=${is_latest}"
+            echo "version_tags=${version_tags}"
+          } >> "$GITHUB_OUTPUT"
 
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          # Labels and the sha tag come from the checked-out tag, not the dispatching commit.
+          # Labels and the sha tag come from the checked-out ref, not the dispatching commit.
           context: git
           images: ghcr.io/chodeus/lama-sidecar
           tags: |
-            type=raw,value=${{ steps.tag.outputs.version }}
+            type=raw,value=${{ steps.tag.outputs.version }},enable=${{ steps.latest.outputs.version_tags }}
             type=raw,value=${{ steps.tag.outputs.major }}.${{ steps.tag.outputs.minor }},enable=${{ steps.latest.outputs.is_latest }}
             type=sha
             type=raw,value=latest,enable=${{ steps.latest.outputs.is_latest }}
@@ -176,7 +208,7 @@ jobs:
     with:
       event_type: build
       status: failure
-      title: "❌ Image publish failed: ${{ inputs.tag || 'latest release' }}"
+      title: "❌ Image publish failed: ${{ inputs.tag || 'main' }}"
       commit_sha: ${{ github.sha }}
     secrets:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
