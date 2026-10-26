@@ -9,7 +9,7 @@ numpy==2.5.4
 # fetched lazily from the pinned rapidocr wheel (see detect.py — the rapidocr
 # package itself needs full opencv-python, whose Qt links libGL the slim image
 # doesn't have).
-onnxruntime==1.31.0
+onnxruntime==1.31.1
 # torch's dependency: the PyTorch CPU index stops at 3.32.3 (CVE-2026-112940),
 # so this PyPI pin upgrades it. Drop it once that index carries 4.2.1+.
 filelock==4.2.4
