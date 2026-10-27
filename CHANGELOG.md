@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.4](https://github.com/chodeus/lama-sidecar/compare/v1.6.3...v1.6.4) (2026-10-27)
+
+
+### Bug Fixes
+
+* **ci:** label main builds from the event, not a detached checkout ([#80](https://github.com/chodeus/lama-sidecar/issues/80)) ([4a4457b](https://github.com/chodeus/lama-sidecar/commit/4a4457bf1a28e6dbdf730cd07fdbf08cefc33511))
+* report the release version from the API; rebuild the image on rapidocr bumps ([#79](https://github.com/chodeus/lama-sidecar/issues/79)) ([3e5b862](https://github.com/chodeus/lama-sidecar/commit/3e5b86207c5133de4e1b37db1d13dfe1d97a2e0c))
+
+
+### Documentation
+
+* say why the Real-ESRGAN model pin isn't tracked ([#82](https://github.com/chodeus/lama-sidecar/issues/82)) ([6564249](https://github.com/chodeus/lama-sidecar/commit/656424993e7b2f9982c516a0f6dea6925b0ee8e9))
+
 ## [1.6.3](https://github.com/chodeus/lama-sidecar/compare/v1.6.2...v1.6.3) (2026-10-26)
 
 
