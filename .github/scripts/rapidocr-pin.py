@@ -7,14 +7,15 @@ import re
 import sys
 import urllib.request
 import zipfile
+from pathlib import Path
 
-DETECT = "detect.py"
+DETECT = Path("detect.py")
 
 
 def main() -> int:
-    src = open(DETECT, encoding="utf-8").read()
+    src = DETECT.read_text(encoding="utf-8")
     version = re.search(r'"rapidocr-([0-9][^"-]*)-py3-none-any\.whl"', src).group(1)
-    member = re.search(r'^MODEL_MEMBER = "([^"]+)"$', src, re.M).group(1)
+    member = re.search(r'^MODEL_MEMBER = "([^"]+)"$', src, re.MULTILINE).group(1)
 
     with urllib.request.urlopen(f"https://pypi.org/pypi/rapidocr/{version}/json", timeout=60) as r:
         files = json.load(r)["urls"]
@@ -32,10 +33,10 @@ def main() -> int:
         f'WHEEL_URL = (\n    "https://files.pythonhosted.org/packages/"\n    "{path}/"\n',
         src,
     )
-    new = re.sub(r'^WHEEL_SHA256 = "[0-9a-f]{64}"$', f'WHEEL_SHA256 = "{wheel["digests"]["sha256"]}"', new, flags=re.M)
-    old_model = re.search(r'^MODEL_SHA256 = "([0-9a-f]{64})"$', src, re.M).group(1)
-    new = re.sub(r'^MODEL_SHA256 = "[0-9a-f]{64}"$', f'MODEL_SHA256 = "{model_sha}"', new, flags=re.M)
-    open(DETECT, "w", encoding="utf-8").write(new)
+    new = re.sub(r'^WHEEL_SHA256 = "[0-9a-f]{64}"$', f'WHEEL_SHA256 = "{wheel["digests"]["sha256"]}"', new, flags=re.MULTILINE)
+    old_model = re.search(r'^MODEL_SHA256 = "([0-9a-f]{64})"$', src, re.MULTILINE).group(1)
+    new = re.sub(r'^MODEL_SHA256 = "[0-9a-f]{64}"$', f'MODEL_SHA256 = "{model_sha}"', new, flags=re.MULTILINE)
+    DETECT.write_text(new, encoding="utf-8")
     print(f"rapidocr {version}: model {'unchanged' if model_sha == old_model else 'CHANGED'}")
     return 0
 
