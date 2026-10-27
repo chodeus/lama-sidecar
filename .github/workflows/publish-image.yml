@@ -195,8 +195,9 @@ jobs:
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          # Labels and the sha tag come from the checked-out ref, not the dispatching commit.
-          context: git
+          # A tag build labels the tag's commit (git). A main build checks out a bare sha, which git context
+          # rejects ("Cannot infer ref from detached HEAD"); that sha is the event's, so workflow context matches it.
+          context: ${{ inputs.tag && 'git' || 'workflow' }}
           images: ghcr.io/chodeus/lama-sidecar
           tags: |
             type=raw,value=${{ steps.tag.outputs.version }},enable=${{ steps.latest.outputs.version_tags }}
