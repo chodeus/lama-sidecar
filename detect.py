@@ -9,7 +9,7 @@ detection. Its det pipeline is small and fully specified, so the pre/post
 processing is ported here on numpy/PIL (the parameters mirror rapidocr 3.9.1's
 shipped ``config.yaml``: mean/std 0.5, thresh 0.3, unclip 1.6, 2x2 dilation).
 
-The model itself still comes from the rapidocr 3.9.1 wheel — an immutable
+The model itself still comes from the rapidocr wheel ``WHEEL_URL`` pins — an immutable
 files.pythonhosted.org artifact — downloaded lazily on first use into the
 model volume and double-verified (wheel SHA256 against PyPI's published
 digest, then the extracted .onnx against the hash rapidocr's own model
