@@ -1,0 +1,60 @@
+name: rapidocr pin
+
+# Renovate bumps the rapidocr wheel name in detect.py but can't follow its URL or hashes; this commits them to the PR.
+on:
+  pull_request:
+    branches: [main]
+    paths: ['detect.py']
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    # Same-repo Renovate branches only; a fork PR's token can't push, and nothing else should be rewritten.
+    if: startsWith(github.head_ref, 'renovate/') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the pin commit
+      actions: write    # re-run the required checks on it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Rewrite the wheel URL and hashes
+        id: pin
+        run: |
+          set -euo pipefail
+          summary=$(python3 .github/scripts/rapidocr-pin.py)
+          echo "$summary"
+          if git diff --quiet -- detect.py; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          case "$summary" in
+            *"model CHANGED"*) echo "model_changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "model_changed=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # A push made with GITHUB_TOKEN starts no workflow, so the required checks are dispatched by hand.
+      - name: Commit and re-run the required checks
+        if: steps.pin.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -q -am "chore(deps): update rapidocr wheel URL and hashes"
+          git push origin "HEAD:${HEAD_REF}"
+          gh workflow run ci.yml --ref "$HEAD_REF"
+
+      # Renovate automerges only when every check passes: a new detection model waits for a human.
+      - name: Hold a changed detection model for review
+        if: steps.pin.outputs.model_changed == 'true'
+        run: |
+          echo "::error::The PP-OCRv6 detection model inside this rapidocr wheel changed; check /detect on real posters, then merge by hand."
+          exit 1

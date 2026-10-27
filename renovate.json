@@ -1,4 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>chodeus/chodeus-ops"]
+  "extends": ["github>chodeus/chodeus-ops"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The rapidocr wheel detect.py fetches its detection model from; rapidocr-pin.yml rewrites the URL and hashes on Renovate's PR.",
+      "managerFilePatterns": ["/^detect\\.py$/"],
+      "matchStrings": ["\"rapidocr-(?<currentValue>[0-9][^\"-]*)-py3-none-any\\.whl\""],
+      "datasourceTemplate": "pypi",
+      "depNameTemplate": "rapidocr"
+    }
+  ]
 }
