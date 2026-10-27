@@ -29,6 +29,7 @@ import torch
 from PIL import Image
 from torch import nn
 
+# Not Renovate-tracked on purpose: only the v0.2.5.0 release ships this file (v0.3.0 has no weights).
 MODEL_URL = (
     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/"
     "realesr-general-x4v3.pth"
