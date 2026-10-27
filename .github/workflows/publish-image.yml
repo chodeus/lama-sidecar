@@ -178,8 +178,8 @@ jobs:
               is_latest=false; version_tags=false
               echo "::warning::main is now ${head:0:7} and the latest release ${latest}, so this build of ${REF:0:7} publishes only its sha tag."
             fi
-            if [ "$head" != "$REF" ]; then echo "superseded_by=${head}" >> "$GITHUB_OUTPUT"; fi
           fi
+          if [ "$version_tags" = false ]; then echo "superseded_by=${head}" >> "$GITHUB_OUTPUT"; fi
           {
             echo "is_latest=${is_latest}"
             echo "version_tags=${version_tags}"
@@ -205,7 +205,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # A push outside the path filter starts no build, so an overtaken main build queues one for the new head.
+  # A newer push outside the path filter, or a release cut mid-build from an older commit, leaves main's head
+  # untagged: the overtaken build queues one more for it, which the queue runs after the release build.
   replace:
     needs: docker
     if: needs.docker.outputs.superseded_by != ''
