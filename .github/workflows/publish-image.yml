@@ -15,12 +15,13 @@ on:
     secrets:
       DISCORD_WEBHOOK_URL:
         required: false
-  # Dependency bumps ship as an image rebuild, not a release.
+  # Dependency bumps ship as an image rebuild, not a release. detect.py holds the rapidocr wheel pin.
   push:
     branches: [main]
     paths:
       - 'requirements.txt'
       - 'Dockerfile'
+      - 'detect.py'
   workflow_dispatch:
     inputs:
       tag:
