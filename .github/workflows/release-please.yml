@@ -24,9 +24,11 @@ jobs:
   docker:
     needs: release
     if: needs.release.outputs.release_created == 'true'
+    # The union publish-image.yml's jobs declare, checked when the run starts even for a skipped job.
     permissions:
       contents: read
       packages: write
+      actions: write
     uses: ./.github/workflows/publish-image.yml
     with:
       tag: ${{ needs.release.outputs.tag_name }}
