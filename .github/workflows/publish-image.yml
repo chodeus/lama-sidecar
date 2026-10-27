@@ -157,7 +157,8 @@ jobs:
         run: docker logs lama || true
 
       # Checked at publication time, so a release published mid-build is not overtaken, and a
-      # main build only tags the newest main; anything older keeps just its sha tag.
+      # main build only tags the newest main; anything older keeps just its sha tag. A release
+      # build that main has moved past may be replacing a newer main build, so main is rebuilt after it.
       - name: Decide which tags to publish
         id: latest
         env:
@@ -177,6 +178,12 @@ jobs:
             if [ "$head" != "$REF" ] || [ "$is_latest" != true ]; then
               is_latest=false; version_tags=false
               echo "::warning::main is now ${head:0:7} and the latest release ${latest}, so this build of ${REF:0:7} publishes only its sha tag."
+            fi
+          elif [ "$is_latest" = true ]; then
+            if ! head=$(git ls-remote --exit-code origin refs/heads/main | cut -f1); then
+              echo "::warning::Could not read main from origin; if it has moved past ${TAG}, rebuild main by hand."
+            elif [ "$head" != "$(git rev-parse HEAD)" ]; then
+              echo "superseded_by=${head}" >> "$GITHUB_OUTPUT"
             fi
           fi
           if [ "$version_tags" = false ]; then echo "superseded_by=${head}" >> "$GITHUB_OUTPUT"; fi
@@ -205,8 +212,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # A newer push outside the path filter, or a release cut mid-build from an older commit, leaves main's head
-  # untagged: the overtaken build queues one more for it, which the queue runs after the release build.
+  # When main's head is left without the release tags (a newer push outside the path filter, a release cut
+  # mid-build, or a release build landing after a main build), the build that noticed queues one more for it.
   replace:
     needs: docker
     if: needs.docker.outputs.superseded_by != ''
