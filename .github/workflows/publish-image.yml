@@ -1,4 +1,6 @@
 name: Publish image
+# Tells a tagless main build apart from a tagged one in the run list; the replace job counts only the former.
+run-name: ${{ inputs.tag && format('Publish image {0}', inputs.tag) || 'Publish image (main)' }}
 
 # Called by release-please.yml with the new tag. Without one (a dependency push to main, the
 # image refresh, or by hand) it builds main and publishes it under the latest release's tags.
@@ -219,10 +221,12 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          waiting=$(gh run list --workflow publish-image.yml --limit 50 --json databaseId,headSha,status \
-            --jq "[.[] | select(.headSha == \"${HEAD_SHA}\" and .status != \"completed\" and .databaseId != ${RUN_ID})] | length")
+          waiting=$(gh run list --workflow publish-image.yml --limit 50 --json databaseId,headSha,status,displayTitle \
+            --jq "[.[] | select(.headSha == \"${HEAD_SHA}\" and .displayTitle == \"Publish image (main)\"
+                    and (.status | IN(\"queued\", \"in_progress\", \"waiting\", \"requested\", \"pending\"))
+                    and .databaseId != ${RUN_ID})] | length")
           if [ "$waiting" -gt 0 ]; then
-            echo "A build of ${HEAD_SHA:0:7} is already queued or running."
+            echo "A main build of ${HEAD_SHA:0:7} is already queued or running."
             exit 0
           fi
           gh workflow run publish-image.yml --ref main
