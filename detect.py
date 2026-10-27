@@ -39,10 +39,10 @@ from regions import connected_components, count_runs, dilate
 
 WHEEL_URL = (
     "https://files.pythonhosted.org/packages/"
-    "a0/23/e8d7251c53137b5b66d89e85cb0bc3e6bcfaec9527f29b477ec04389c8b2/"
-    "rapidocr-3.9.1-py3-none-any.whl"
+    "59/07/203065283bba0c5e9c10af3602dc25ab3e59ee54dc2d1d22c8faeabf5ed8/"
+    "rapidocr-3.10.0-py3-none-any.whl"
 )
-WHEEL_SHA256 = "600885e4e94e0b427abad394fccb0ec1d3c9118a215ca435bf7680aeae0e292b"
+WHEEL_SHA256 = "2fc34e26cd0f48514804a94f8832283039c7334076bff60768b1fed9ad068050"
 MODEL_MEMBER = "rapidocr/models/PP-OCRv6_det_small.onnx"
 MODEL_FILE = "PP-OCRv6_det_small.onnx"
 MODEL_SHA256 = "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f"
