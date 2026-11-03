@@ -2,7 +2,7 @@
 # to avoid pulling ~2GB of CUDA libraries we don't use.
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
-pydantic==2.14.1
+pydantic==2.14.2
 pillow==13.0.0
 numpy==2.5.4
 # detect.py runs the PP-OCRv6 det model under onnxruntime; the model file is
