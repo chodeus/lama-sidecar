@@ -27,10 +27,9 @@ RUN pip install --no-cache-dir "torch==${TORCH_VERSION}" \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Patch setuptools and pip LAST so no earlier pip step reintroduces the base image's
-# setuptools 70.2.0 (CVE-2025-47273) or pip 26.2.1, whose vendored certifi still trusts
-# the compromised eMudhra roots (GHSA-6q48-6c7w-9gw2). Floors, not pins.
-RUN pip install --no-cache-dir --upgrade 'setuptools>=82.0.1' 'pip>=26.2.2' \
+# Upgrade setuptools and pip LAST so no earlier pip step reinstalls the base image's older,
+# vulnerable copies. Floors, not pins.
+RUN pip install --no-cache-dir --upgrade 'setuptools>=82.0.1' 'pip>=26.3' \
     && python -c "import setuptools, sys; assert tuple(map(int, setuptools.__version__.split('.')[:2])) >= (78, 1), setuptools.__version__"
 
 COPY app.py lama.py regions.py detect.py upscale.py entrypoint.sh ./
