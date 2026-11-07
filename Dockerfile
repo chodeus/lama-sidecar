@@ -20,7 +20,7 @@ RUN apt-get update \
 
 # CPU-only torch — keeps the image ~1.5GB instead of ~5GB with CUDA.
 # renovate: datasource=pypi depName=torch
-ARG TORCH_VERSION=2.14.1
+ARG TORCH_VERSION=2.15.0
 RUN pip install --no-cache-dir "torch==${TORCH_VERSION}" \
     --index-url https://download.pytorch.org/whl/cpu
 
