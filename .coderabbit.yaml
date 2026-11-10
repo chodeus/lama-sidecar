@@ -35,7 +35,7 @@ reviews:
         lama-sidecar review rules — flag violations of these invariants:
         - ONLY-MASKED-PIXELS-CHANGE CONTRACT: every composite onto the output
           image must clamp its paste alpha under the (dilated) hole mask —
-          the ImageChops.darker(blurred, hard_mask) pattern. Any code path
+          the ImageChops.darker(blurred, crop_mask) pattern. Any code path
           that could alter a pixel outside the mask is a bug, no matter how
           subtle the change (feather, seam match, refine passes included).
         - HEURISTICS FAIL NO-OP: best-effort helpers (mask snap, boundary
