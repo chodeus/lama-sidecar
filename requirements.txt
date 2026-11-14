@@ -9,7 +9,7 @@ numpy==2.5.4
 # fetched lazily from the pinned rapidocr wheel (see detect.py — the rapidocr
 # package itself needs full opencv-python, whose Qt links libGL the slim image
 # doesn't have).
-onnxruntime==1.31.1
+onnxruntime==1.32.0
 # torch's dependency. The PyTorch CPU index lags PyPI, so this pin keeps filelock
 # current and visible to Renovate.
 filelock==4.2.9
