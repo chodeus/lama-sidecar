@@ -137,7 +137,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="lama-sidecar", version="1.6.3", lifespan=_lifespan  # x-release-please-version
+    title="lama-sidecar", version="1.6.4", lifespan=_lifespan  # x-release-please-version
 )
 
 
