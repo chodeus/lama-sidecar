@@ -12,4 +12,4 @@ numpy==2.5.5
 onnxruntime==1.32.0
 # torch's dependency. The PyTorch CPU index lags PyPI, so this pin keeps filelock
 # current and visible to Renovate.
-filelock==4.2.12
+filelock==4.3.0
